@@ -29,6 +29,10 @@ def test_api_health_dashboard_config_secrets_and_killswitch(tmp_path: Path) -> N
     assert home.status_code == 200
     assert "TS-Harness Control" in home.text
 
+    logo = client.get("/assets/logo.jpg")
+    assert logo.status_code == 200
+    assert logo.headers["content-type"].startswith("image/jpeg")
+
     # Update models and budget via /api/config
     update_res = client.post(
         "/api/config",

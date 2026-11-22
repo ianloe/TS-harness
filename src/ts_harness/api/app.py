@@ -57,6 +57,9 @@ class KillSwitchActionRequest(BaseModel):
 
 
 def _default_logo_path() -> Path:
+    pkg_logo = Path(__file__).resolve().parent / "assets" / "ts-harness-logo.jpg"
+    if pkg_logo.exists():
+        return pkg_logo
     return Path(__file__).resolve().parents[3] / "docs" / "assets" / "ts-harness-logo.jpg"
 
 
