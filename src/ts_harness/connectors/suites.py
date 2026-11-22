@@ -112,8 +112,13 @@ class ReadOnlyM365MailConnector:
     def create_draft(
         self, *, in_reply_to: str, recipient: str, subject: str, body: str
     ) -> EmailDraft:
-        raise ReadOnlyConnectorError(
-            "Read-only Microsoft 365 connector cannot create remote drafts."
+        """Create a local-only draft when using a read-only Microsoft 365 token."""
+        return EmailDraft(
+            id=f"local-draft-{in_reply_to}",
+            in_reply_to=in_reply_to,
+            recipient=recipient,
+            subject=subject,
+            body=body,
         )
 
     def propose_label(self, *, message_id: str, label: str) -> dict[str, str]:
@@ -227,7 +232,14 @@ class ReadOnlyLarkMailConnector:
     def create_draft(
         self, *, in_reply_to: str, recipient: str, subject: str, body: str
     ) -> EmailDraft:
-        raise ReadOnlyConnectorError("Read-only Lark Suite connector cannot create remote drafts.")
+        """Create a local-only draft when using a read-only Lark Suite token."""
+        return EmailDraft(
+            id=f"local-draft-{in_reply_to}",
+            in_reply_to=in_reply_to,
+            recipient=recipient,
+            subject=subject,
+            body=body,
+        )
 
     def propose_label(self, *, message_id: str, label: str) -> dict[str, str]:
         return {"message_id": message_id, "proposed_label": label}

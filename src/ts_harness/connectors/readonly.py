@@ -63,16 +63,31 @@ class ReadOnlyGmailConnector:
             f"https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults={limit}",
             token,
         )
-        return [
-            EmailMessage(
-                id=str(item.get("id", "")),
-                sender="unknown",
-                subject="(Gmail message)",
-                body="",
-                received_at=datetime.now(UTC),
+        results: list[EmailMessage] = []
+        now = datetime.now(UTC)
+        for item in data.get("messages", [])[:limit]:
+            msg_id = str(item.get("id", ""))
+            if not msg_id:
+                continue
+            detail = _fetch_json(
+                f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}"
+                "?format=metadata&metadataHeaders=Subject&metadataHeaders=From",
+                token,
             )
-            for item in data.get("messages", [])
-        ]
+            headers = {
+                str(h.get("name", "")).lower(): str(h.get("value", ""))
+                for h in detail.get("payload", {}).get("headers", [])
+            }
+            results.append(
+                EmailMessage(
+                    id=msg_id,
+                    sender=headers.get("from", "unknown"),
+                    subject=headers.get("subject", "(No subject)"),
+                    body=str(detail.get("snippet", "")),
+                    received_at=now,
+                )
+            )
+        return results
 
     def create_draft(
         self,
@@ -82,7 +97,14 @@ class ReadOnlyGmailConnector:
         subject: str,
         body: str,
     ) -> EmailDraft:
-        raise ReadOnlyConnectorError("Read-only Gmail connector cannot create remote drafts.")
+        """Create a local-only draft when using a read-only Gmail token."""
+        return EmailDraft(
+            id=f"local-draft-{in_reply_to}",
+            in_reply_to=in_reply_to,
+            recipient=recipient,
+            subject=subject,
+            body=body,
+        )
 
     def propose_label(self, *, message_id: str, label: str) -> dict[str, str]:
         return {"message_id": message_id, "proposed_label": label}

@@ -71,6 +71,13 @@ def test_m365_and_lark_connectors_parse_responses(tmp_path: Path) -> None:
     m365_drive = ReadOnlyM365DriveConnector(vault, http_get=fake_m365_get)
 
     assert m365_mail.list_messages()[0].sender == "bob@contoso.com"
+    m365_draft = m365_mail.create_draft(
+        in_reply_to="m1",
+        recipient="bob@contoso.com",
+        subject="Re: M365 Agenda",
+        body="Local draft",
+    )
+    assert m365_draft.id == "local-draft-m1"
     assert m365_cal.list_events()[0].title == "Sync"
     assert m365_drive.search_documents("Q4")[0].title == "Q4 Plan.docx"
 
