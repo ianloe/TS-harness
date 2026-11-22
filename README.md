@@ -101,6 +101,7 @@ The built-in web interface at `/` allows you to manage:
 - **Secrets Vault**: Store or remove `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `AGNES_AI_API_KEY`, `DEEPSEEK_API_KEY`, `AEGIS_API_TOKEN`, and `NTFY_TOKEN`. Secrets are written to a `0600`-protected vault outside the repository, are never returned in plain text, and are automatically redacted from logs and audit records.
 - **FinOps budgets**: Set task, workflow, daily, and monthly limits in `SGD` or `USD` only, plus pre-flight approval thresholds.
 - **Telemetry & logging**: Toggle OpenTelemetry / Aegis export and log verbosity.
+- **Documents (PDF & Markdown)**: Upload `.pdf` and `.md`/`.markdown` files (up to 10 MiB, with `%PDF-` magic-byte validation, `pypdf` text extraction, prompt-injection scanning, and `<untrusted_data>` quarantine) and download stored documents via `/api/documents/{filename}/download`.
 - **Emergency kill switch**: Pause or resume all execution directly from the header.
 
 ---

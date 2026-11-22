@@ -1,5 +1,11 @@
 """Connector interfaces, mock implementations, and read-only real adapters."""
 
+from ts_harness.connectors.documents import (
+    DocumentMetadata,
+    DocumentStore,
+    DocumentValidationError,
+    ExtractedDocument,
+)
 from ts_harness.connectors.interfaces import (
     CalendarConnector,
     CalendarEvent,
@@ -31,10 +37,14 @@ from ts_harness.connectors.readonly import (
 __all__ = [
     "CalendarConnector",
     "CalendarEvent",
+    "DocumentMetadata",
+    "DocumentStore",
+    "DocumentValidationError",
     "DriveConnector",
     "DriveDocument",
     "EmailDraft",
     "EmailMessage",
+    "ExtractedDocument",
     "GitHubActivity",
     "GitHubConnector",
     "LocalFilesystemConnector",

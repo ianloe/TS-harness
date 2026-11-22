@@ -300,6 +300,24 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
       <button type="submit">Save Configuration</button>
     </form>
+
+    <div class="card">
+      <h2>Documents (PDF &amp; Markdown)</h2>
+      <p class="muted">
+        Upload <code>.pdf</code> or <code>.md</code> files for workflow input. Extracted text is
+        automatically quarantined as untrusted data and scanned for prompt injection.
+      </p>
+      <form onsubmit="uploadDocument(event)" style="margin-bottom:14px;">
+        <div class="row">
+          <div class="field">
+            <label for="doc-file">Select PDF or Markdown file</label>
+            <input id="doc-file" type="file" accept=".pdf,.md,.markdown" required>
+          </div>
+        </div>
+        <button type="submit">Upload Document</button>
+      </form>
+      <div id="docs-list" class="muted">Loading documents...</div>
+    </div>
   </div>
 
   <script>
@@ -465,8 +483,50 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       }
     }
 
+    async function loadDocuments() {
+      const res = await fetch("/api/documents");
+      const docs = await res.json();
+      const box = document.getElementById("docs-list");
+      if (docs.length === 0) {
+        box.textContent = "No documents uploaded yet.";
+        return;
+      }
+      box.innerHTML = docs.map(d => `
+        <div class="secret-row">
+          <div><strong>${d.name}</strong> <span class="muted">(${d.size_bytes} bytes)</span></div>
+          <div>
+            <a href="/api/documents/${encodeURIComponent(d.name)}/download">Download</a>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    async function uploadDocument(event) {
+      event.preventDefault();
+      const input = document.getElementById("doc-file");
+      if (!input.files || input.files.length === 0) return;
+      const form = new FormData();
+      form.append("file", input.files[0]);
+      const res = await fetch("/api/documents/upload", { method: "POST", body: form });
+      if (!res.ok) {
+        const err = await res.json();
+        showToast("Upload failed: " + (err.detail || res.statusText), true);
+        return;
+      }
+      const meta = await res.json();
+      input.value = "";
+      showToast(
+        meta.suspicious
+          ? `Uploaded ${meta.name} (warning: injection signals detected)`
+          : `Uploaded ${meta.name}`,
+        meta.suspicious
+      );
+      await loadDocuments();
+    }
+
     loadStatus();
     loadConfig();
+    loadDocuments();
   </script>
 </body>
 </html>

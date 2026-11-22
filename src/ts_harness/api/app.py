@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,7 @@ from ts_harness.config import (
     resolve_config_path,
     save_settings,
 )
+from ts_harness.connectors.documents import DocumentStore, DocumentValidationError
 from ts_harness.db.base import create_db_engine, create_session_factory, init_db
 from ts_harness.finops.budget import BudgetManager
 from ts_harness.finops.reports import build_cost_attribution_report
@@ -80,6 +81,7 @@ def create_app(
         else Path(settings.data_dir) / "settings.yaml"
     )
     vault = SecretsVault(Path(settings.data_dir) / ".secrets.json")
+    doc_store = DocumentStore(Path(settings.data_dir) / "documents")
     resolved_logo = logo_path or _default_logo_path()
 
     app = FastAPI(title="TS-Harness API", version=__version__)
@@ -241,5 +243,49 @@ def create_app(
         except (KeyError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return req.model_dump(mode="json")
+
+    @app.get("/api/documents")
+    def list_documents() -> list[dict[str, Any]]:
+        return [d.model_dump(mode="json") for d in doc_store.list_documents()]
+
+    @app.post("/api/documents/upload")
+    async def upload_document(file: UploadFile = File(...)) -> dict[str, Any]:
+        raw = await file.read()
+        try:
+            meta = doc_store.save_upload(file.filename or "upload.md", raw)
+        except DocumentValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        audit_logger.append(
+            event_type="document.uploaded",
+            actor="web_ui",
+            payload={
+                "name": meta.name,
+                "size_bytes": meta.size_bytes,
+                "suspicious": meta.suspicious,
+            },
+        )
+        return meta.model_dump(mode="json")
+
+    @app.get("/api/documents/{filename}/text")
+    def read_document_text(filename: str) -> dict[str, Any]:
+        try:
+            extracted = doc_store.read_quarantined(filename)
+        except (DocumentValidationError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return extracted.model_dump(mode="json")
+
+    @app.get("/api/documents/{filename}/download")
+    def download_document(filename: str) -> FileResponse:
+        try:
+            path = doc_store.get_download_path(filename)
+        except (DocumentValidationError, FileNotFoundError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        audit_logger.append(
+            event_type="document.downloaded",
+            actor="web_ui",
+            payload={"name": path.name},
+        )
+        media_type = "application/pdf" if path.suffix.lower() == ".pdf" else "text/markdown"
+        return FileResponse(path, media_type=media_type, filename=path.name)
 
     return app
