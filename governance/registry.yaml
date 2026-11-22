@@ -1,0 +1,77 @@
+version: "1.0.0"
+entries:
+  - id: planner
+    kind: agent
+    owner: ianloe
+    purpose: Decompose user requests into minimal reversible steps.
+    permissions: ["T0"]
+    risk_tier: T0
+    draft_only: true
+    review_date: "2027-02-22"
+    last_updated: "2026-11-22"
+
+  - id: executor
+    kind: agent
+    owner: ianloe
+    purpose: Execute approved plan steps through the governed ToolGateway.
+    permissions: ["T0", "T1"]
+    risk_tier: T1
+    draft_only: true
+    review_date: "2027-02-22"
+    last_updated: "2026-11-22"
+
+  - id: verifier
+    kind: agent
+    owner: ianloe
+    purpose: Independently verify facts, URLs, style, and arithmetic.
+    permissions: ["T0", "sandbox"]
+    risk_tier: T0
+    draft_only: true
+    review_date: "2027-02-22"
+    last_updated: "2026-11-22"
+
+  - id: inbox_triage
+    kind: workflow
+    owner: ianloe
+    purpose: Classify, summarise, draft replies, and propose labels (never send).
+    permissions: ["mail:read", "mail:draft"]
+    risk_tier: T1
+    draft_only: true
+    review_date: "2027-02-22"
+    last_updated: "2026-11-22"
+
+  - id: meeting_prep
+    kind: workflow
+    owner: ianloe
+    purpose: Read calendar and related documents to produce a one-page brief.
+    permissions: ["calendar:read", "drive:read"]
+    risk_tier: T0
+    draft_only: true
+    review_date: "2027-02-22"
+    last_updated: "2026-11-22"
+
+  - id: research_digest
+    kind: workflow
+    owner: ianloe
+    purpose: Bounded web research with source citations and verifier pass.
+    permissions: ["web:search"]
+    risk_tier: T0
+    draft_only: true
+    review_date: "2027-02-22"
+    last_updated: "2026-11-22"
+
+  - id: weekly_review
+    kind: workflow
+    owner: ianloe
+    purpose: Aggregate activity, spend, and open approvals into a weekly report.
+    permissions: ["store:read", "budget:read", "approvals:read"]
+    risk_tier: T0
+    draft_only: true
+    review_date: "2027-02-22"
+    last_updated: "2026-11-22"
+
+changelog:
+  - timestamp: "2026-11-22T19:58:00+00:00"
+    actor: ianloe
+    target_id: registry
+    summary: Initial registration of Phase 1-6 agents and draft-only workflows.

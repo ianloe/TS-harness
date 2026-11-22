@@ -124,4 +124,11 @@ The built-in web interface at `/` allows you to manage:
 - **Phase 3 (Complete)**: Orchestration (workflow graph engine with bounded loops, planner/executor/verifier agents, model router, crash resume).
 - **Phase 4 (Complete)**: Workflows (`inbox_triage`, `meeting_prep`, `research_digest`, `weekly_review` against mock and read-only connectors, layered memory, and triggers).
 - **Phase 5 (Complete)**: Visibility (OpenTelemetry tracing, dashboard metrics & FinOps attribution API, prompt cache, anomaly detector, and regression eval harness).
-- **Phase 6 (Next)**: Governance (workflow registry, FRAME/AAEF control mapping, monthly attestation report, and runbook).
+- **Phase 6 (Complete)**: Governance (agent/workflow registry, FRAME/AAEF control mapping, monthly Markdown/PDF attestation report generator, and [incident runbook](docs/runbook.md)).
+
+## Documentation
+
+- [Default Policy Set](docs/policies.md) (`policies/strict.yaml`, `policies/relaxed.yaml`)
+- [Incident & Kill Switch Runbook](docs/runbook.md)
+- [Architecture & Design Decisions](docs/decisions.md)
+- [CI Workflow Template](docs/ci-workflow.yml)

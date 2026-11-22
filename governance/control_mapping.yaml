@@ -1,0 +1,42 @@
+controls:
+  - control_id: CTRL-01
+    name: Deny-by-default tool gateway
+    module: ts_harness.gateway
+    description: Every tool invocation must pass explicit YAML policy evaluation.
+    frame_id: FRAME-PLACEHOLDER-01
+    aaef_id: AAEF-PLACEHOLDER-01
+
+  - control_id: CTRL-02
+    name: Non-overridable T3 forbidden actions
+    module: ts_harness.risk
+    description: Payments, credential entry, security changes, and trading are permanently blocked.
+    frame_id: FRAME-PLACEHOLDER-02
+    aaef_id: AAEF-PLACEHOLDER-02
+
+  - control_id: CTRL-03
+    name: Untrusted content quarantine and provenance gate
+    module: ts_harness.guardrails
+    description: External content is quarantined and cannot trigger T1+ actions without approval.
+    frame_id: FRAME-PLACEHOLDER-03
+    aaef_id: AAEF-PLACEHOLDER-03
+
+  - control_id: CTRL-04
+    name: Hash-chained append-only audit log
+    module: ts_harness.audit
+    description: All prompts, tool calls, policy decisions, approvals, and costs are SHA-256 chained.
+    frame_id: FRAME-PLACEHOLDER-04
+    aaef_id: AAEF-PLACEHOLDER-04
+
+  - control_id: CTRL-05
+    name: Bounded FinOps budgets and anomaly detection
+    module: ts_harness.finops
+    description: Task, workflow, daily, and monthly hard stops in SGD or USD only.
+    frame_id: FRAME-PLACEHOLDER-05
+    aaef_id: AAEF-PLACEHOLDER-05
+
+  - control_id: CTRL-06
+    name: Global, workflow, and connector kill switches
+    module: ts_harness.killswitch
+    description: Emergency halt checked before every node and tool execution.
+    frame_id: FRAME-PLACEHOLDER-06
+    aaef_id: AAEF-PLACEHOLDER-06

@@ -298,3 +298,35 @@ def eval_cmd() -> None:
     console.print_json(summary.model_dump_json())
     if summary.passed_cases != summary.total_cases or summary.escape_rate > 0.0:
         raise typer.Exit(code=1)
+
+
+@app.command("attest")
+def attest_cmd(
+    ctx: typer.Context,
+    output_dir: Path = typer.Option(Path("reports"), "--output-dir", help="Output directory."),
+    period: str | None = typer.Option(None, "--period", help="YYYY-MM period override."),
+    registry_path: Path = typer.Option(Path("governance/registry.yaml"), "--registry"),
+    controls_path: Path = typer.Option(Path("governance/control_mapping.yaml"), "--controls"),
+) -> None:
+    """Generate monthly governance attestation reports (Markdown and PDF)."""
+    from ts_harness.governance.attestation import (
+        generate_attestation_report,
+        write_attestation_artifacts,
+    )
+    from ts_harness.governance.controls import load_control_mappings
+    from ts_harness.governance.registry import GovernanceRegistry
+
+    c = build_container(_get_config_path(ctx))
+    registry = GovernanceRegistry.from_yaml(registry_path)
+    controls = load_control_mappings(controls_path)
+    report = generate_attestation_report(
+        session_factory=c.session_factory,
+        budget_config=c.settings.budget,
+        audit_logger=c.audit,
+        registry=registry,
+        controls=controls,
+        environment=c.settings.environment,
+        period=period,
+    )
+    md_path, pdf_path = write_attestation_artifacts(report, output_dir)
+    console.print(f"[green]Generated attestation reports:[/green] {md_path}, {pdf_path}")
