@@ -120,6 +120,31 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       display: none;
     }
     .muted { color: var(--muted); font-size: 0.85rem; }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+    }
+    .tab-btn { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .chat-log {
+      height: 360px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .chat-msg { padding: 10px 12px; border-radius: 8px; max-width: 85%; white-space: pre-wrap; }
+    .chat-user { align-self: flex-end; background: var(--primary); color: #fff; }
+    .chat-bot { align-self: flex-start; border: 1px solid var(--border); background: var(--bg); }
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .chip { font-size: 0.78rem; padding: 5px 10px; background: #475569; }
   </style>
 </head>
 <body>
@@ -146,6 +171,70 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
     <div id="toast" class="toast" role="status"></div>
 
+    <div class="tabs" role="tablist">
+      <button id="tab-btn-chat" type="button" class="tab-btn active" onclick="switchTab('chat')">
+        Interactive Chat
+      </button>
+      <button id="tab-btn-config" type="button" class="tab-btn" onclick="switchTab('config')">
+        Configuration &amp; Vault
+      </button>
+    </div>
+
+    <div id="panel-chat">
+      <div class="card">
+        <h2>Chat with TS-Harness</h2>
+        <p class="muted">
+          Messages are PII/secret-redacted, classified by risk tier (T0-T3), routed through the
+          governed ToolGateway, and verified before output.
+        </p>
+        <div class="chips">
+          <button type="button" class="chip" onclick="usePrompt('Triage my morning inbox')">
+            Triage my inbox
+          </button>
+          <button type="button" class="chip" onclick="usePrompt('Prepare my meeting brief')">
+            Meeting prep
+          </button>
+          <button type="button" class="chip" onclick="usePrompt('Research LLM security papers')">
+            Research digest
+          </button>
+          <button type="button" class="chip" onclick="usePrompt('Run my weekly review')">
+            Weekly review
+          </button>
+          <button
+            type="button"
+            class="chip"
+            onclick="usePrompt('Make a wire transfer payment of 500 SGD')"
+          >
+            Test T3 block
+          </button>
+        </div>
+        <div id="chat-log" class="chat-log">
+          <div class="chat-msg chat-bot">
+            Hello! Ask me to triage your inbox, prepare a meeting brief, run a research digest,
+            or generate your weekly review.
+          </div>
+        </div>
+        <form onsubmit="sendChat(event)">
+          <div class="row" style="margin-bottom:8px;">
+            <div class="field" style="margin-bottom:0;">
+              <label for="chat-suite">Connector Suite</label>
+              <select id="chat-suite">
+                <option value="mock">Mock Connectors (Safe Offline)</option>
+                <option value="google_workspace">Google Workspace (Read-Only)</option>
+                <option value="microsoft_365">Microsoft 365 (Read-Only)</option>
+                <option value="lark_suite">Lark Suite (Read-Only)</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <input id="chat-input" type="text" placeholder="Type a task or question..." required>
+            <button type="submit">Send</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="panel-config" style="display:none;">
     <div class="grid">
       <div class="card">
         <h2>System Status</h2>
@@ -348,6 +437,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       </div>
       <div id="connectors-list" class="muted">Loading connector status...</div>
     </div>
+    </div>
   </div>
 
   <script>
@@ -378,6 +468,65 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     }
 
     initTheme();
+
+    function switchTab(tab) {
+      const isChat = tab === "chat";
+      document.getElementById("panel-chat").style.display = isChat ? "block" : "none";
+      document.getElementById("panel-config").style.display = isChat ? "none" : "block";
+      document.getElementById("tab-btn-chat").classList.toggle("active", isChat);
+      document.getElementById("tab-btn-config").classList.toggle("active", !isChat);
+    }
+
+    function usePrompt(text) {
+      document.getElementById("chat-input").value = text;
+    }
+
+    function appendChat(role, text, metaHtml = "") {
+      const log = document.getElementById("chat-log");
+      const div = document.createElement("div");
+      div.className = "chat-msg " + (role === "user" ? "chat-user" : "chat-bot");
+      div.textContent = text;
+      if (metaHtml) {
+        const meta = document.createElement("div");
+        meta.style.marginTop = "6px";
+        meta.innerHTML = metaHtml;
+        div.appendChild(meta);
+      }
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    async function sendChat(event) {
+      event.preventDefault();
+      const input = document.getElementById("chat-input");
+      const suite = document.getElementById("chat-suite").value;
+      const msg = input.value.trim();
+      if (!msg) return;
+      appendChat("user", msg);
+      input.value = "";
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg, suite }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        appendChat("bot", "Error: " + (err.detail || res.statusText));
+        return;
+      }
+      const data = await res.json();
+      const badges = `
+        <span class="badge">${data.workflow_name}</span>
+        <span class="badge ${data.blocked ? "danger" : "ok"}">${data.risk_tier}</span>
+        <span class="badge ${data.verified ? "ok" : "warn"}">
+          ${data.verified ? "verified" : "blocked/unverified"}
+        </span>
+        <span class="badge">${Number(data.cost_amount).toFixed(4)} ${data.currency}</span>
+      `;
+      appendChat("bot", data.reply, badges);
+      await loadStatus();
+    }
 
     function showToast(msg, isError = false) {
       const el = document.getElementById("toast");

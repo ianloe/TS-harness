@@ -92,3 +92,24 @@ def test_api_health_dashboard_config_secrets_and_killswitch(tmp_path: Path) -> N
     ks_off = client.post("/api/killswitch/resume-all")
     assert ks_off.status_code == 200
     assert ks_off.json()["resumed"] is True
+
+    # Interactive chat: workflow routing + T3 block + kill switch block
+    chat_ok = client.post(
+        "/api/chat",
+        json={"message": "Triage my morning inbox", "suite": "mock"},
+    )
+    assert chat_ok.status_code == 200
+    assert chat_ok.json()["workflow_name"] == "inbox_triage"
+    assert chat_ok.json()["verified"] is True
+
+    chat_t3 = client.post(
+        "/api/chat",
+        json={"message": "Make a wire transfer payment of 500 SGD", "suite": "mock"},
+    )
+    assert chat_t3.status_code == 200
+    assert chat_t3.json()["risk_tier"] == "T3"
+    assert chat_t3.json()["blocked"] is True
+
+    client.post("/api/killswitch/pause-all", json={"reason": "halt"})
+    chat_ks = client.post("/api/chat", json={"message": "Hello", "suite": "mock"})
+    assert chat_ks.status_code == 503

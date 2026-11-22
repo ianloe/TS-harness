@@ -11,6 +11,8 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from ts_harness import __version__
+from ts_harness.agents.models import StubModelClient
+from ts_harness.agents.roles import ExecutionReport, PlannerAgent, VerifierAgent
 from ts_harness.api.manual import MANUAL_HTML
 from ts_harness.api.ui import DASHBOARD_HTML
 from ts_harness.approvals.queue import ApprovalQueue
@@ -31,13 +33,30 @@ from ts_harness.connectors.google_oauth import (
     exchange_code_for_tokens,
     refresh_google_access_token,
 )
-from ts_harness.connectors.suites import get_suite_statuses
+from ts_harness.connectors.mocks import MockWebResearchConnector
+from ts_harness.connectors.readonly import ReadOnlyConnectorError
+from ts_harness.connectors.suites import SuiteKind, build_suite_bundle, get_suite_statuses
+from ts_harness.core.models import RiskTier, TaskCreate
+from ts_harness.core.store import StateStore
 from ts_harness.db.base import create_db_engine, create_session_factory, init_db
 from ts_harness.finops.budget import BudgetManager
 from ts_harness.finops.reports import build_cost_attribution_report
+from ts_harness.gateway.gateway import ToolGateway
+from ts_harness.graph.engine import GraphRunner
+from ts_harness.guardrails.filters import redact_pii_and_secrets
 from ts_harness.killswitch.manager import KillSwitchManager
 from ts_harness.observability.tracing import build_run_trace, collect_dashboard_metrics
+from ts_harness.policy.engine import PolicyEngine
+from ts_harness.policy.schema import PolicyRule, PolicySet, RuleEffect, RuleMatch
+from ts_harness.router.router import TaskRouter
 from ts_harness.security.vault import SecretStatus, SecretsVault
+from ts_harness.workflows.implementations import (
+    build_inbox_triage_handlers,
+    build_meeting_prep_handlers,
+    build_research_digest_handlers,
+    build_weekly_review_handlers,
+)
+from ts_harness.workflows.registry import load_workflow_definition
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -63,6 +82,13 @@ class KillSwitchActionRequest(BaseModel):
     reason: str = Field(default="Manual action via web UI")
 
 
+class ChatRequest(BaseModel):
+    """Interactive chat request routed through TS-Harness guardrails."""
+
+    message: str = Field(min_length=1, max_length=4000)
+    suite: str = Field(default="mock")
+
+
 def _default_logo_path() -> Path:
     pkg_logo = Path(__file__).resolve().parent / "assets" / "ts-harness-logo.jpg"
     if pkg_logo.exists():
@@ -85,6 +111,7 @@ def create_app(
     audit_logger = AuditLogger(session_factory)
     kill_switch = KillSwitchManager(session_factory, audit_logger)
     approval_queue = ApprovalQueue(session_factory, audit_logger)
+    store = StateStore(session_factory)
 
     target_config_path = (
         resolved_config_path
@@ -379,5 +406,186 @@ def create_app(
         )
         media_type = "application/pdf" if path.suffix.lower() == ".pdf" else "text/markdown"
         return FileResponse(path, media_type=media_type, filename=path.name)
+
+    @app.post("/api/chat")
+    def chat_with_harness(payload: ChatRequest) -> dict[str, Any]:
+        cfg = _current_settings()
+        blocked, block_reason = kill_switch.is_blocked()
+        if blocked:
+            raise HTTPException(status_code=503, detail=block_reason or "Kill switch active.")
+
+        safe_msg = redact_pii_and_secrets(payload.message).text
+        router = TaskRouter(models=cfg.models, currency=cfg.budget.currency)
+        classification = router.classify(safe_msg)
+
+        if classification.risk_tier == RiskTier.T3:
+            audit_logger.append(
+                event_type="chat.blocked_t3",
+                actor="web_ui",
+                payload={"message": safe_msg, "workflow": classification.workflow_name},
+            )
+            return {
+                "reply": (
+                    "Blocked (T3 Forbidden): Payments, trading, credential entry, and "
+                    "security setting changes are permanently prohibited."
+                ),
+                "workflow_name": classification.workflow_name,
+                "risk_tier": RiskTier.T3.value,
+                "data_class": classification.data_class.value,
+                "verified": False,
+                "cost_amount": 0.0,
+                "currency": cfg.budget.currency,
+                "blocked": True,
+            }
+
+        budget_mgr = BudgetManager(session_factory, cfg.budget)
+        b_status = budget_mgr.check_budget(
+            workflow_name=classification.workflow_name,
+            estimated_cost=classification.estimated_cost,
+        )
+        if not b_status.allowed:
+            raise HTTPException(status_code=402, detail=b_status.reason or "Budget limit reached.")
+
+        task, _ = store.create_task(
+            TaskCreate(
+                title=safe_msg[:80],
+                description=safe_msg,
+                workflow_name=classification.workflow_name,
+                risk_tier=classification.risk_tier,
+                data_class=classification.data_class,
+                cost_currency=cfg.budget.currency,
+            )
+        )
+
+        policy_path = Path(__file__).resolve().parents[3] / "policies" / "strict.yaml"
+        if policy_path.exists():
+            policy_engine = PolicyEngine.from_yaml(policy_path)
+        else:
+            policy_engine = PolicyEngine(
+                PolicySet(
+                    version="1.0",
+                    name="chat-default",
+                    rules=[
+                        PolicyRule(
+                            id="allow-t0-t1",
+                            effect=RuleEffect.ALLOW,
+                            match=RuleMatch(action_tiers=[RiskTier.T0, RiskTier.T1]),
+                        )
+                    ],
+                )
+            )
+
+        gateway = ToolGateway(
+            audit_logger=audit_logger,
+            budget_manager=budget_mgr,
+            kill_switch=kill_switch,
+            policy_checker=policy_engine,
+            currency=cfg.budget.currency,
+        )
+        runner = GraphRunner(
+            store=store,
+            audit_logger=audit_logger,
+            budget_manager=budget_mgr,
+            kill_switch=kill_switch,
+            approval_queue=approval_queue,
+            currency=cfg.budget.currency,
+        )
+        client = StubModelClient(currency=cfg.budget.currency)
+        planner = PlannerAgent(
+            model_client=client,
+            role_config=classification.models.planner,
+            budget_manager=budget_mgr,
+        )
+        verifier = VerifierAgent(
+            model_client=client,
+            role_config=classification.models.verifier,
+            budget_manager=budget_mgr,
+        )
+
+        use_mock = payload.suite == "mock"
+        suite_kind: SuiteKind = (
+            payload.suite  # type: ignore[assignment]
+            if payload.suite in {"google_workspace", "microsoft_365", "lark_suite"}
+            else "google_workspace"
+        )
+        bundle = build_suite_bundle(suite_kind, vault, use_mock=use_mock)
+
+        wf_dir = Path(__file__).resolve().parents[3] / "workflows"
+        wf_name = classification.workflow_name
+        try:
+            if wf_name in {"inbox_triage", "meeting_prep", "research_digest", "weekly_review"} and (
+                wf_dir / f"{wf_name}.yaml"
+            ).exists():
+                wf = load_workflow_definition(wf_dir / f"{wf_name}.yaml")
+                if wf_name == "inbox_triage":
+                    handlers = build_inbox_triage_handlers(
+                        mail=bundle.mail, gateway=gateway, planner=planner, verifier=verifier
+                    )
+                elif wf_name == "meeting_prep":
+                    handlers = build_meeting_prep_handlers(
+                        calendar=bundle.calendar,
+                        drive=bundle.drive,
+                        gateway=gateway,
+                        planner=planner,
+                        verifier=verifier,
+                    )
+                elif wf_name == "research_digest":
+                    handlers = build_research_digest_handlers(
+                        web=MockWebResearchConnector(),
+                        gateway=gateway,
+                        planner=planner,
+                        verifier=verifier,
+                    )
+                else:
+                    handlers = build_weekly_review_handlers(
+                        store=store,
+                        budget_manager=budget_mgr,
+                        approval_queue=approval_queue,
+                        planner=planner,
+                        verifier=verifier,
+                    )
+                run_res = runner.run(wf.graph, task, handlers)
+                reply = (
+                    run_res.state.get("summary")
+                    or run_res.state.get("brief_text")
+                    or run_res.state.get("digest_text")
+                    or run_res.state.get("report_text")
+                    or "Workflow completed."
+                )
+                verified = bool(run_res.state.get("verification", {}).get("passed", True))
+            else:
+                plan = planner.plan(safe_msg, task_id=task.id, workflow_name=wf_name)
+                ver = verifier.verify(
+                    safe_msg,
+                    ExecutionReport(output_text=plan.rationale),
+                    task_id=task.id,
+                    workflow_name=wf_name,
+                )
+                reply = plan.rationale
+                verified = ver.passed
+        except ReadOnlyConnectorError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        updated = store.get_task(task.id)
+        cost = updated.cost_amount if updated is not None else 0.0
+        audit_logger.append(
+            event_type="chat.turn",
+            actor="web_ui",
+            task_id=task.id,
+            payload={"workflow": wf_name, "suite": payload.suite, "verified": verified},
+            cost_amount=cost,
+            cost_currency=cfg.budget.currency,
+        )
+        return {
+            "reply": reply,
+            "task_id": task.id,
+            "workflow_name": wf_name,
+            "risk_tier": classification.risk_tier.value,
+            "data_class": classification.data_class.value,
+            "verified": verified,
+            "cost_amount": cost,
+            "currency": cfg.budget.currency,
+            "blocked": False,
+        }
 
     return app

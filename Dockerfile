@@ -12,6 +12,8 @@ COPY pyproject.toml README.md alembic.ini ./
 COPY alembic ./alembic
 COPY src ./src
 COPY docs ./docs
+COPY policies ./policies
+COPY workflows ./workflows
 
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir . \
