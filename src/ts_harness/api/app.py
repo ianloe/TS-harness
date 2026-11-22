@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from ts_harness import __version__
-from ts_harness.agents.models import StubModelClient
+from ts_harness.agents.models import ModelProviderError, VaultModelClient
 from ts_harness.agents.roles import ExecutionReport, PlannerAgent, VerifierAgent
 from ts_harness.api.manual import MANUAL_HTML
 from ts_harness.api.ui import DASHBOARD_HTML
@@ -87,6 +87,34 @@ class ChatRequest(BaseModel):
 
     message: str = Field(min_length=1, max_length=4000)
     suite: str = Field(default="mock")
+
+
+def _format_workflow_reply(wf_name: str, state: dict[str, Any]) -> str:
+    if wf_name == "inbox_triage":
+        lines = [str(state.get("summary", "Inbox triage completed."))]
+        for item in state.get("summaries", [])[:5]:
+            flag = " [SUSPICIOUS]" if item.get("suspicious") else ""
+            subj = item.get("subject", "(No subject)")
+            lines.append(f"- {subj} | From: {item.get('sender')}{flag}")
+        drafts = state.get("drafts", [])
+        if drafts:
+            lines.append(f"\nDrafts prepared ({len(drafts)}, local draft-only):")
+            for d in drafts[:3]:
+                lines.append(f"  To: {d.get('recipient')} | {d.get('subject')}\n  {d.get('body')}")
+        return "\n".join(lines)
+    if wf_name == "meeting_prep":
+        briefs = state.get("briefs", [])
+        if briefs:
+            return "\n\n".join(
+                f"Meeting: {b.get('meeting')}\nAttendees: {', '.join(b.get('attendees', []))}\n"
+                f"{b.get('brief')}"
+                for b in briefs
+            )
+    if wf_name == "research_digest":
+        return str(state.get("digest_text") or "Research digest completed.")
+    if wf_name == "weekly_review":
+        return str(state.get("report_text") or "Weekly review completed.")
+    return str(state.get("summary") or "Workflow completed.")
 
 
 def _resolve_repo_path(relative: str) -> Path:
@@ -497,7 +525,7 @@ def create_app(
             approval_queue=approval_queue,
             currency=cfg.budget.currency,
         )
-        client = StubModelClient(currency=cfg.budget.currency)
+        client = VaultModelClient(vault=vault, currency=cfg.budget.currency)
         planner = PlannerAgent(
             model_client=client,
             role_config=classification.models.planner,
@@ -552,13 +580,7 @@ def create_app(
                         verifier=verifier,
                     )
                 run_res = runner.run(wf.graph, task, handlers)
-                reply = (
-                    run_res.state.get("summary")
-                    or run_res.state.get("brief_text")
-                    or run_res.state.get("digest_text")
-                    or run_res.state.get("report_text")
-                    or "Workflow completed."
-                )
+                reply = _format_workflow_reply(wf_name, run_res.state)
                 verified = bool(run_res.state.get("verification", {}).get("passed", True))
             else:
                 plan = planner.plan(safe_msg, task_id=task.id, workflow_name=wf_name)
@@ -570,7 +592,7 @@ def create_app(
                 )
                 reply = plan.rationale
                 verified = ver.passed
-        except ReadOnlyConnectorError as exc:
+        except (ReadOnlyConnectorError, ModelProviderError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         updated = store.get_task(task.id)
