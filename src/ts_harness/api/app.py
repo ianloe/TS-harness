@@ -89,6 +89,13 @@ class ChatRequest(BaseModel):
     suite: str = Field(default="mock")
 
 
+def _resolve_repo_path(relative: str) -> Path:
+    cwd_path = Path(relative)
+    if cwd_path.exists():
+        return cwd_path
+    return Path(__file__).resolve().parents[3] / relative
+
+
 def _default_logo_path() -> Path:
     pkg_logo = Path(__file__).resolve().parent / "assets" / "ts-harness-logo.jpg"
     if pkg_logo.exists():
@@ -457,7 +464,7 @@ def create_app(
             )
         )
 
-        policy_path = Path(__file__).resolve().parents[3] / "policies" / "strict.yaml"
+        policy_path = _resolve_repo_path("policies/strict.yaml")
         if policy_path.exists():
             policy_engine = PolicyEngine.from_yaml(policy_path)
         else:
@@ -510,7 +517,7 @@ def create_app(
         )
         bundle = build_suite_bundle(suite_kind, vault, use_mock=use_mock)
 
-        wf_dir = Path(__file__).resolve().parents[3] / "workflows"
+        wf_dir = _resolve_repo_path("workflows")
         wf_name = classification.workflow_name
         try:
             if wf_name in {"inbox_triage", "meeting_prep", "research_digest", "weekly_review"} and (
