@@ -8,6 +8,7 @@ import urllib.request
 from datetime import UTC, datetime
 from typing import Any
 
+from ts_harness.connectors.google_oauth import refresh_google_access_token
 from ts_harness.connectors.interfaces import (
     CalendarEvent,
     DriveDocument,
@@ -16,6 +17,19 @@ from ts_harness.connectors.interfaces import (
     GitHubActivity,
 )
 from ts_harness.security.vault import SecretsVault
+
+
+def _resolve_google_token(vault: SecretsVault, token_key: str) -> str:
+    token = vault.get_secret(token_key)
+    if token:
+        return token
+    if (
+        vault.get_secret("GOOGLE_CLIENT_ID")
+        and vault.get_secret("GOOGLE_CLIENT_SECRET")
+        and vault.get_secret("GOOGLE_REFRESH_TOKEN")
+    ):
+        return refresh_google_access_token(vault)
+    raise ReadOnlyConnectorError(f"Missing secret '{token_key}'.")
 
 
 class ReadOnlyConnectorError(RuntimeError):
@@ -44,9 +58,7 @@ class ReadOnlyGmailConnector:
         self._token_key = token_key
 
     def list_messages(self, *, limit: int = 10) -> list[EmailMessage]:
-        token = self._vault.get_secret(self._token_key)
-        if not token:
-            raise ReadOnlyConnectorError(f"Missing secret '{self._token_key}'.")
+        token = _resolve_google_token(self._vault, self._token_key)
         data = _fetch_json(
             f"https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults={limit}",
             token,
@@ -84,9 +96,7 @@ class ReadOnlyGoogleCalendarConnector:
         self._token_key = token_key
 
     def list_events(self, *, limit: int = 10) -> list[CalendarEvent]:
-        token = self._vault.get_secret(self._token_key)
-        if not token:
-            raise ReadOnlyConnectorError(f"Missing secret '{self._token_key}'.")
+        token = _resolve_google_token(self._vault, self._token_key)
         data = _fetch_json(
             f"https://www.googleapis.com/calendar/v3/calendars/primary/events?maxResults={limit}",
             token,
@@ -111,9 +121,7 @@ class ReadOnlyGoogleDriveConnector:
         self._token_key = token_key
 
     def search_documents(self, query: str, *, limit: int = 5) -> list[DriveDocument]:
-        token = self._vault.get_secret(self._token_key)
-        if not token:
-            raise ReadOnlyConnectorError(f"Missing secret '{self._token_key}'.")
+        token = _resolve_google_token(self._vault, self._token_key)
         encoded = urllib.parse.quote(f"name contains '{query}'")
         data = _fetch_json(
             f"https://www.googleapis.com/drive/v3/files?q={encoded}&pageSize={limit}",

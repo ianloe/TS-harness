@@ -169,6 +169,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <option value="OPENROUTER_API_KEY">OPENROUTER_API_KEY</option>
                 <option value="AGNES_AI_API_KEY">AGNES_AI_API_KEY</option>
                 <option value="DEEPSEEK_API_KEY">DEEPSEEK_API_KEY</option>
+                <option value="GOOGLE_CLIENT_ID">GOOGLE_CLIENT_ID</option>
+                <option value="GOOGLE_CLIENT_SECRET">GOOGLE_CLIENT_SECRET</option>
+                <option value="GOOGLE_REFRESH_TOKEN">GOOGLE_REFRESH_TOKEN</option>
                 <option value="GOOGLE_WORKSPACE_TOKEN">GOOGLE_WORKSPACE_TOKEN</option>
                 <option value="MICROSOFT_365_TOKEN">MICROSOFT_365_TOKEN</option>
                 <option value="LARK_APP_ID">LARK_APP_ID</option>
@@ -333,8 +336,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <h2>Workspace Connectors (Read-Only by Default)</h2>
       <p class="muted">
         Configure suite tokens in the Secrets Vault above to connect Google Workspace,
-        Microsoft 365, or Lark Suite.
+        Microsoft 365, or Lark Suite. For Google Workspace OAuth, save
+        <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code>, add redirect URI
+        <code>http://localhost:8000/api/connectors/google/callback</code> in Google Cloud Console,
+        then click Connect below.
       </p>
+      <div style="margin-bottom:12px;">
+        <a href="/api/connectors/google/start" style="text-decoration:none;">
+          <button type="button">Connect Google Workspace (Read-Only)</button>
+        </a>
+      </div>
       <div id="connectors-list" class="muted">Loading connector status...</div>
     </div>
   </div>

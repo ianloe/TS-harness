@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import secrets
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from ts_harness import __version__
@@ -25,6 +26,11 @@ from ts_harness.config import (
     save_settings,
 )
 from ts_harness.connectors.documents import DocumentStore, DocumentValidationError
+from ts_harness.connectors.google_oauth import (
+    build_google_auth_url,
+    exchange_code_for_tokens,
+    refresh_google_access_token,
+)
 from ts_harness.connectors.suites import get_suite_statuses
 from ts_harness.db.base import create_db_engine, create_session_factory, init_db
 from ts_harness.finops.budget import BudgetManager
@@ -88,6 +94,7 @@ def create_app(
     vault = SecretsVault(Path(settings.data_dir) / ".secrets.json")
     doc_store = DocumentStore(Path(settings.data_dir) / "documents")
     resolved_logo = logo_path or _default_logo_path()
+    oauth_states: set[str] = set()
 
     app = FastAPI(title="TS-Harness API", version=__version__)
 
@@ -256,6 +263,78 @@ def create_app(
     @app.get("/api/connectors/status")
     def connectors_status() -> list[dict[str, Any]]:
         return [s.model_dump(mode="json") for s in get_suite_statuses(vault)]
+
+    @app.get("/api/connectors/google/start")
+    def google_oauth_start(request: Request) -> RedirectResponse:
+        client_id = vault.get_secret("GOOGLE_CLIENT_ID")
+        client_secret = vault.get_secret("GOOGLE_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Save GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the Secrets Vault first."
+                ),
+            )
+        state = secrets.token_urlsafe(24)
+        oauth_states.add(state)
+        redirect_uri = str(request.url_for("google_oauth_callback"))
+        url = build_google_auth_url(client_id=client_id, redirect_uri=redirect_uri, state=state)
+        return RedirectResponse(url=url, status_code=302)
+
+    @app.get("/api/connectors/google/callback", name="google_oauth_callback")
+    def google_oauth_callback(
+        request: Request,
+        code: str | None = None,
+        state: str | None = None,
+        error: str | None = None,
+    ) -> RedirectResponse:
+        if error:
+            raise HTTPException(status_code=400, detail=f"Google OAuth error: {error}")
+        if not state or state not in oauth_states:
+            raise HTTPException(status_code=400, detail="Invalid or expired OAuth state.")
+        oauth_states.discard(state)
+        if not code:
+            raise HTTPException(status_code=400, detail="Missing authorization code.")
+
+        client_id = vault.get_secret("GOOGLE_CLIENT_ID")
+        client_secret = vault.get_secret("GOOGLE_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            raise HTTPException(status_code=400, detail="Missing Google client credentials.")
+
+        redirect_uri = str(request.url_for("google_oauth_callback"))
+        tokens = exchange_code_for_tokens(
+            code=code,
+            client_id=client_id,
+            client_secret=client_secret,
+            redirect_uri=redirect_uri,
+        )
+        access_token = str(tokens.get("access_token", "")).strip()
+        refresh_token = str(tokens.get("refresh_token", "")).strip()
+        if not access_token:
+            raise HTTPException(status_code=400, detail="Google did not return an access_token.")
+        vault.set_secret("GOOGLE_WORKSPACE_TOKEN", access_token)
+        if refresh_token:
+            vault.set_secret("GOOGLE_REFRESH_TOKEN", refresh_token)
+
+        audit_logger.append(
+            event_type="google.oauth_connected",
+            actor="web_ui",
+            payload={"scopes": ["gmail.readonly", "calendar.readonly", "drive.readonly"]},
+        )
+        return RedirectResponse(url="/?oauth=google_connected", status_code=302)
+
+    @app.post("/api/connectors/google/refresh")
+    def google_oauth_refresh() -> dict[str, str]:
+        try:
+            refresh_google_access_token(vault)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        audit_logger.append(
+            event_type="google.oauth_refreshed",
+            actor="web_ui",
+            payload={"status": "refreshed"},
+        )
+        return {"status": "refreshed"}
 
     @app.get("/api/documents")
     def list_documents() -> list[dict[str, Any]]:
