@@ -1,0 +1,37 @@
+environment: development
+data_dir: .ts_harness_data
+db:
+  url: sqlite:///ts_harness.db
+  echo: false
+budget:
+  currency: SGD
+  task_limit: 2.0
+  workflow_limit: 10.0
+  daily_limit: 25.0
+  monthly_limit: 200.0
+  soft_limit_pct: 0.75
+  hard_limit_pct: 1.0
+  preflight_approval_threshold: 1.0
+models:
+  planner:
+    provider: anthropic
+    model_name: claude-sonnet-4-20250514
+    temperature: 0.0
+    max_tokens: 4096
+  executor:
+    provider: anthropic
+    model_name: claude-sonnet-4-20250514
+    temperature: 0.0
+    max_tokens: 4096
+  verifier:
+    provider: anthropic
+    model_name: claude-haiku-4-5-20251001
+    temperature: 0.0
+    max_tokens: 2048
+telemetry:
+  enabled: false
+  service_name: ts-harness
+  aegis_export_url: null
+logging:
+  level: INFO
+  json_format: true

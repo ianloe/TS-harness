@@ -1,0 +1,43 @@
+services:
+  ts-harness:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ts-harness:latest
+    container_name: ts-harness
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      TS_HARNESS_ENVIRONMENT: ${TS_HARNESS_ENVIRONMENT:-production}
+      TS_HARNESS_DATA_DIR: /data
+      TS_HARNESS_CONFIG_PATH: /data/settings.yaml
+      TS_HARNESS_DB__URL: ${TS_HARNESS_DB__URL:-sqlite:////data/ts_harness.db}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    volumes:
+      - ts_harness_data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ts-harness-postgres
+    profiles: ["postgres"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ts_harness}
+      POSTGRES_USER: ${POSTGRES_USER:-tsharness}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tsharness_change_me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ts_harness_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-tsharness} -d $${POSTGRES_DB:-ts_harness}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ts_harness_data:
+  ts_harness_pgdata:

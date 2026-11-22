@@ -1,0 +1,205 @@
+"""FastAPI application for status, configuration, secrets vault, and kill switch."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, HTMLResponse
+from pydantic import BaseModel, Field
+
+from ts_harness import __version__
+from ts_harness.api.ui import DASHBOARD_HTML
+from ts_harness.audit.logger import AuditLogger
+from ts_harness.config import (
+    BudgetConfig,
+    LoggingConfig,
+    ModelsConfig,
+    Settings,
+    TelemetryConfig,
+    load_settings,
+    resolve_config_path,
+    save_settings,
+)
+from ts_harness.db.base import create_db_engine, create_session_factory, init_db
+from ts_harness.finops.budget import BudgetManager
+from ts_harness.killswitch.manager import KillSwitchManager
+from ts_harness.security.vault import SecretStatus, SecretsVault
+
+
+class ConfigUpdateRequest(BaseModel):
+    """Validated payload for updating non-secret harness configuration."""
+
+    environment: str | None = None
+    models: ModelsConfig | None = None
+    budget: BudgetConfig | None = None
+    telemetry: TelemetryConfig | None = None
+    logging: LoggingConfig | None = None
+
+
+class SecretUpdateRequest(BaseModel):
+    """Validated payload for storing a secret in the vault."""
+
+    key: str = Field(min_length=3, max_length=64)
+    value: str = Field(min_length=1)
+
+
+class KillSwitchActionRequest(BaseModel):
+    """Optional reason for activating a kill switch."""
+
+    reason: str = Field(default="Manual action via web UI")
+
+
+def _default_logo_path() -> Path:
+    return Path(__file__).resolve().parents[3] / "docs" / "assets" / "ts-harness-logo.jpg"
+
+
+def create_app(
+    *,
+    config_path: Path | None = None,
+    logo_path: Path | None = None,
+) -> FastAPI:
+    """Create a FastAPI app with dependency-injected state (no global mutable state)."""
+    resolved_config_path = resolve_config_path(config_path)
+    settings = load_settings(resolved_config_path)
+
+    engine = create_db_engine(settings.db.url, echo=settings.db.echo)
+    init_db(engine)
+    session_factory = create_session_factory(engine)
+    audit_logger = AuditLogger(session_factory)
+    kill_switch = KillSwitchManager(session_factory, audit_logger)
+
+    target_config_path = (
+        resolved_config_path
+        if resolved_config_path is not None
+        else Path(settings.data_dir) / "settings.yaml"
+    )
+    vault = SecretsVault(Path(settings.data_dir) / ".secrets.json")
+    resolved_logo = logo_path or _default_logo_path()
+
+    app = FastAPI(title="TS-Harness API", version=__version__)
+
+    def _current_settings() -> Settings:
+        if target_config_path.exists():
+            return load_settings(target_config_path)
+        return settings
+
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok", "version": __version__}
+
+    @app.get("/", response_class=HTMLResponse)
+    def dashboard() -> str:
+        return DASHBOARD_HTML
+
+    @app.get("/assets/logo.jpg")
+    def logo() -> FileResponse:
+        if not resolved_logo.exists():
+            raise HTTPException(status_code=404, detail="Logo not found")
+        return FileResponse(resolved_logo, media_type="image/jpeg")
+
+    @app.get("/api/status")
+    def get_status() -> dict[str, Any]:
+        cfg = _current_settings()
+        budget_mgr = BudgetManager(session_factory, cfg.budget)
+        summary = budget_mgr.get_spend_summary()
+        chain = audit_logger.verify_chain()
+        switches = kill_switch.list_states(active_only=True)
+        return {
+            "environment": cfg.environment,
+            "audit_chain_valid": chain.valid,
+            "audit_entries": chain.checked_count,
+            "active_kill_switches": [s.model_dump(mode="json") for s in switches],
+            "currency": summary.currency,
+            "daily_spend": summary.daily_spend,
+            "daily_limit": summary.daily_limit,
+            "monthly_spend": summary.monthly_spend,
+            "monthly_limit": summary.monthly_limit,
+        }
+
+    @app.get("/api/config")
+    def get_config() -> dict[str, Any]:
+        cfg = _current_settings()
+        secrets: list[SecretStatus] = vault.list_statuses()
+        return {
+            "settings": {
+                "environment": cfg.environment,
+                "data_dir": cfg.data_dir,
+                "models": cfg.models.model_dump(mode="json"),
+                "budget": cfg.budget.model_dump(mode="json"),
+                "telemetry": cfg.telemetry.model_dump(mode="json"),
+                "logging": cfg.logging.model_dump(mode="json"),
+            },
+            "secrets": [s.model_dump(mode="json") for s in secrets],
+        }
+
+    @app.post("/api/config")
+    def update_config(payload: ConfigUpdateRequest) -> dict[str, Any]:
+        cfg = _current_settings()
+        updated_data = cfg.model_dump()
+        if payload.environment is not None:
+            updated_data["environment"] = payload.environment
+        if payload.models is not None:
+            updated_data["models"] = payload.models.model_dump()
+        if payload.budget is not None:
+            updated_data["budget"] = payload.budget.model_dump()
+        if payload.telemetry is not None:
+            updated_data["telemetry"] = payload.telemetry.model_dump()
+        if payload.logging is not None:
+            updated_data["logging"] = payload.logging.model_dump()
+
+        new_settings = Settings(**updated_data)
+        save_settings(new_settings, target_config_path)
+        audit_logger.append(
+            event_type="config.updated",
+            actor="web_ui",
+            payload={
+                "environment": new_settings.environment,
+                "currency": new_settings.budget.currency,
+                "planner_model": new_settings.models.planner.model_name,
+                "executor_model": new_settings.models.executor.model_name,
+                "verifier_model": new_settings.models.verifier.model_name,
+            },
+        )
+        return {"status": "saved", "config_path": str(target_config_path)}
+
+    @app.post("/api/secrets")
+    def update_secret(payload: SecretUpdateRequest) -> dict[str, str]:
+        try:
+            vault.set_secret(payload.key, payload.value)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        audit_logger.append(
+            event_type="secret.updated",
+            actor="web_ui",
+            payload={"key": payload.key, "action": "set"},
+        )
+        return {"status": "saved", "key": payload.key}
+
+    @app.delete("/api/secrets/{key_name}")
+    def delete_secret(key_name: str) -> dict[str, Any]:
+        try:
+            deleted = vault.delete_secret(key_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if deleted:
+            audit_logger.append(
+                event_type="secret.deleted",
+                actor="web_ui",
+                payload={"key": key_name},
+            )
+        return {"deleted": deleted, "key": key_name}
+
+    @app.post("/api/killswitch/pause-all")
+    def pause_all(payload: KillSwitchActionRequest) -> dict[str, Any]:
+        state = kill_switch.pause_all(reason=payload.reason, actor="web_ui")
+        return state.model_dump(mode="json")
+
+    @app.post("/api/killswitch/resume-all")
+    def resume_all() -> dict[str, Any]:
+        state = kill_switch.resume_all(actor="web_ui")
+        return {"resumed": state is not None}
+
+    return app
