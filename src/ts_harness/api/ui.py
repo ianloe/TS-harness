@@ -10,7 +10,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <title>TS-Harness Control &amp; Configuration</title>
   <style>
     :root {
-      color-scheme: light dark;
+      color-scheme: light;
       --bg: #f5f7fb;
       --card: #ffffff;
       --text: #0f172a;
@@ -22,16 +22,15 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       --ok: #15803d;
       --warn: #b45309;
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #0b1120;
-        --card: #111827;
-        --text: #f1f5f9;
-        --muted: #94a3b8;
-        --border: #1e293b;
-        --primary: #38bdf8;
-        --primary-hover: #0ea5e9;
-      }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0b1120;
+      --card: #111827;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --border: #1e293b;
+      --primary: #38bdf8;
+      --primary-hover: #0ea5e9;
     }
     * { box-sizing: border-box; }
     body {
@@ -133,7 +132,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           <p>Draft-only by default, deny-by-default tool gateway, bounded FinOps</p>
         </div>
       </div>
-      <div style="display:flex; gap:8px;">
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button id="theme-toggle" type="button" class="secondary" onclick="toggleTheme()">
+          Dark Mode
+        </button>
         <button class="danger" onclick="toggleKillSwitch(true)">Pause All (Kill Switch)</button>
         <button class="secondary" onclick="toggleKillSwitch(false)">Resume All</button>
       </div>
@@ -335,6 +337,34 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   </div>
 
   <script>
+    function applyTheme(theme) {
+      document.documentElement.setAttribute("data-theme", theme);
+      const btn = document.getElementById("theme-toggle");
+      if (btn) {
+        btn.textContent = theme === "dark" ? "Light Mode" : "Dark Mode";
+      }
+    }
+
+    function initTheme() {
+      const saved = localStorage.getItem("ts_harness_theme");
+      if (saved === "light" || saved === "dark") {
+        applyTheme(saved);
+        return;
+      }
+      const prefersDark =
+        window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      applyTheme(prefersDark ? "dark" : "light");
+    }
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute("data-theme") || "light";
+      const next = current === "dark" ? "light" : "dark";
+      localStorage.setItem("ts_harness_theme", next);
+      applyTheme(next);
+    }
+
+    initTheme();
+
     function showToast(msg, isError = false) {
       const el = document.getElementById("toast");
       el.style.display = "block";
