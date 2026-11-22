@@ -13,6 +13,9 @@ MANAGED_SECRET_KEYS: tuple[str, ...] = (
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
     "GEMINI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "AGNES_AI_API_KEY",
+    "DEEPSEEK_API_KEY",
     "AEGIS_API_TOKEN",
     "NTFY_TOKEN",
 )

@@ -97,8 +97,8 @@ uv run ts-harness killswitch resume-all
 ## Web Configuration Interface
 
 The built-in web interface at `/` allows you to manage:
-- **Role-based model routing**: Configure provider (`anthropic`, `openai`, `gemini`, `ollama`) and model name independently for `planner`, `executor`, and `verifier` roles.
-- **Secrets Vault**: Store or remove `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `AEGIS_API_TOKEN`, and `NTFY_TOKEN`. Secrets are written to a `0600`-protected vault outside the repository, are never returned in plain text, and are automatically redacted from logs and audit records.
+- **Role-based model routing**: Configure provider (`anthropic`, `openai`, `gemini`, `openrouter`, `agnes-ai`, `deepseek`, `ollama`) and model name independently for `planner`, `executor`, and `verifier` roles.
+- **Secrets Vault**: Store or remove `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `AGNES_AI_API_KEY`, `DEEPSEEK_API_KEY`, `AEGIS_API_TOKEN`, and `NTFY_TOKEN`. Secrets are written to a `0600`-protected vault outside the repository, are never returned in plain text, and are automatically redacted from logs and audit records.
 - **FinOps budgets**: Set task, workflow, daily, and monthly limits in `SGD` or `USD` only, plus pre-flight approval thresholds.
 - **Telemetry & logging**: Toggle OpenTelemetry / Aegis export and log verbosity.
 - **Emergency kill switch**: Pause or resume all execution directly from the header.
@@ -120,8 +120,8 @@ The built-in web interface at `/` allows you to manage:
 ## Build Roadmap
 
 - **Phase 1 (Complete)**: Foundation (config, SQLite/Postgres ORM + Alembic, state store, checkpoints, DLQ, hash-chained audit log, FinOps budgets, kill switch, deny-by-default gateway, CLI, Docker Compose, and Web Configuration UI).
-- **Phase 2 (Next)**: Safety (risk tiers, YAML policy engine with explain mode, approval queue, guardrails, prompt-injection corpus, Docker sandbox).
-- **Phase 3**: Orchestration (workflow graph engine with bounded loops, planner/executor/verifier agents, model router, crash resume).
-- **Phase 4**: Workflows (`inbox_triage`, `meeting_prep`, `research_digest`, `weekly_review` against mock then read-only connectors).
-- **Phase 5**: Visibility (tracing, dashboard metrics, FinOps reports, CI eval harness).
-- **Phase 6**: Governance (workflow registry, FRAME/AAEF control mapping, monthly attestation report).
+- **Phase 2 (Complete)**: Safety (risk tiers, YAML policy engine with explain mode, approval queue, guardrails, prompt-injection corpus, Docker sandbox).
+- **Phase 3 (Complete)**: Orchestration (workflow graph engine with bounded loops, planner/executor/verifier agents, model router, crash resume).
+- **Phase 4 (Complete)**: Workflows (`inbox_triage`, `meeting_prep`, `research_digest`, `weekly_review` against mock and read-only connectors, layered memory, and triggers).
+- **Phase 5 (Complete)**: Visibility (OpenTelemetry tracing, dashboard metrics & FinOps attribution API, prompt cache, anomaly detector, and regression eval harness).
+- **Phase 6 (Next)**: Governance (workflow registry, FRAME/AAEF control mapping, monthly attestation report, and runbook).

@@ -161,6 +161,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <option value="ANTHROPIC_API_KEY">ANTHROPIC_API_KEY</option>
                 <option value="OPENAI_API_KEY">OPENAI_API_KEY</option>
                 <option value="GEMINI_API_KEY">GEMINI_API_KEY</option>
+                <option value="OPENROUTER_API_KEY">OPENROUTER_API_KEY</option>
+                <option value="AGNES_AI_API_KEY">AGNES_AI_API_KEY</option>
+                <option value="DEEPSEEK_API_KEY">DEEPSEEK_API_KEY</option>
                 <option value="AEGIS_API_TOKEN">AEGIS_API_TOKEN</option>
                 <option value="NTFY_TOKEN">NTFY_TOKEN</option>
               </select>
@@ -192,6 +195,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             <option value="anthropic">anthropic</option>
             <option value="openai">openai</option>
             <option value="gemini">gemini</option>
+            <option value="openrouter">openrouter</option>
+            <option value="agnes-ai">agnes-ai</option>
+            <option value="deepseek">deepseek</option>
             <option value="ollama">ollama</option>
           </select>
           <div class="field" style="margin-top:8px;">
@@ -205,6 +211,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             <option value="anthropic">anthropic</option>
             <option value="openai">openai</option>
             <option value="gemini">gemini</option>
+            <option value="openrouter">openrouter</option>
+            <option value="agnes-ai">agnes-ai</option>
+            <option value="deepseek">deepseek</option>
             <option value="ollama">ollama</option>
           </select>
           <div class="field" style="margin-top:8px;">
@@ -218,6 +227,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             <option value="anthropic">anthropic</option>
             <option value="openai">openai</option>
             <option value="gemini">gemini</option>
+            <option value="openrouter">openrouter</option>
+            <option value="agnes-ai">agnes-ai</option>
+            <option value="deepseek">deepseek</option>
             <option value="ollama">ollama</option>
           </select>
           <div class="field" style="margin-top:8px;">

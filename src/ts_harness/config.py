@@ -11,7 +11,15 @@ from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Currency = Literal["SGD", "USD"]
-ModelProvider = Literal["anthropic", "openai", "gemini", "ollama"]
+ModelProvider = Literal[
+    "anthropic",
+    "openai",
+    "gemini",
+    "ollama",
+    "openrouter",
+    "agnes-ai",
+    "deepseek",
+]
 SUPPORTED_CURRENCIES: tuple[str, ...] = ("SGD", "USD")
 
 

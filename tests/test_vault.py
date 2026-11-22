@@ -26,6 +26,9 @@ def test_vault_set_get_delete_and_permissions(tmp_path: Path) -> None:
     assert mode == 0o600
 
     statuses = {s.key: s for s in vault.list_statuses()}
+    assert "OPENROUTER_API_KEY" in statuses
+    assert "AGNES_AI_API_KEY" in statuses
+    assert "DEEPSEEK_API_KEY" in statuses
     assert statuses["ANTHROPIC_API_KEY"].configured is True
     assert statuses["ANTHROPIC_API_KEY"].source == "vault"
     assert statuses["ANTHROPIC_API_KEY"].masked_preview == "sk-a...9999"
