@@ -33,10 +33,24 @@ from ts_harness.connectors.readonly import (
     ReadOnlyGoogleCalendarConnector,
     ReadOnlyGoogleDriveConnector,
 )
+from ts_harness.connectors.suites import (
+    ConnectorBundle,
+    ReadOnlyLarkCalendarConnector,
+    ReadOnlyLarkDriveConnector,
+    ReadOnlyLarkMailConnector,
+    ReadOnlyM365CalendarConnector,
+    ReadOnlyM365DriveConnector,
+    ReadOnlyM365MailConnector,
+    SuiteKind,
+    SuiteStatus,
+    build_suite_bundle,
+    get_suite_statuses,
+)
 
 __all__ = [
     "CalendarConnector",
     "CalendarEvent",
+    "ConnectorBundle",
     "DocumentMetadata",
     "DocumentStore",
     "DocumentValidationError",
@@ -58,6 +72,16 @@ __all__ = [
     "ReadOnlyGmailConnector",
     "ReadOnlyGoogleCalendarConnector",
     "ReadOnlyGoogleDriveConnector",
+    "ReadOnlyLarkCalendarConnector",
+    "ReadOnlyLarkDriveConnector",
+    "ReadOnlyLarkMailConnector",
+    "ReadOnlyM365CalendarConnector",
+    "ReadOnlyM365DriveConnector",
+    "ReadOnlyM365MailConnector",
+    "SuiteKind",
+    "SuiteStatus",
     "WebResearchConnector",
     "WebSearchHit",
+    "build_suite_bundle",
+    "get_suite_statuses",
 ]

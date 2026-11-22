@@ -24,6 +24,7 @@ from ts_harness.config import (
     save_settings,
 )
 from ts_harness.connectors.documents import DocumentStore, DocumentValidationError
+from ts_harness.connectors.suites import get_suite_statuses
 from ts_harness.db.base import create_db_engine, create_session_factory, init_db
 from ts_harness.finops.budget import BudgetManager
 from ts_harness.finops.reports import build_cost_attribution_report
@@ -243,6 +244,10 @@ def create_app(
         except (KeyError, ValueError) as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return req.model_dump(mode="json")
+
+    @app.get("/api/connectors/status")
+    def connectors_status() -> list[dict[str, Any]]:
+        return [s.model_dump(mode="json") for s in get_suite_statuses(vault)]
 
     @app.get("/api/documents")
     def list_documents() -> list[dict[str, Any]]:

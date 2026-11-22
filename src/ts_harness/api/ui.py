@@ -164,6 +164,11 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <option value="OPENROUTER_API_KEY">OPENROUTER_API_KEY</option>
                 <option value="AGNES_AI_API_KEY">AGNES_AI_API_KEY</option>
                 <option value="DEEPSEEK_API_KEY">DEEPSEEK_API_KEY</option>
+                <option value="GOOGLE_WORKSPACE_TOKEN">GOOGLE_WORKSPACE_TOKEN</option>
+                <option value="MICROSOFT_365_TOKEN">MICROSOFT_365_TOKEN</option>
+                <option value="LARK_APP_ID">LARK_APP_ID</option>
+                <option value="LARK_APP_SECRET">LARK_APP_SECRET</option>
+                <option value="LARK_TENANT_ACCESS_TOKEN">LARK_TENANT_ACCESS_TOKEN</option>
                 <option value="AEGIS_API_TOKEN">AEGIS_API_TOKEN</option>
                 <option value="NTFY_TOKEN">NTFY_TOKEN</option>
               </select>
@@ -317,6 +322,15 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <button type="submit">Upload Document</button>
       </form>
       <div id="docs-list" class="muted">Loading documents...</div>
+    </div>
+
+    <div class="card">
+      <h2>Workspace Connectors (Read-Only by Default)</h2>
+      <p class="muted">
+        Configure suite tokens in the Secrets Vault above to connect Google Workspace,
+        Microsoft 365, or Lark Suite.
+      </p>
+      <div id="connectors-list" class="muted">Loading connector status...</div>
     </div>
   </div>
 
@@ -524,9 +538,26 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       await loadDocuments();
     }
 
+    async function loadConnectors() {
+      const res = await fetch("/api/connectors/status");
+      const suites = await res.json();
+      const box = document.getElementById("connectors-list");
+      box.innerHTML = suites.map(s => `
+        <div class="secret-row">
+          <div><strong>${s.label}</strong> <span class="muted">(${s.mode})</span></div>
+          <div>
+            <span class="badge ${s.configured ? "ok" : "warn"}">
+              ${s.configured ? "Ready" : "Needs " + s.missing_keys.join(", ")}
+            </span>
+          </div>
+        </div>
+      `).join("");
+    }
+
     loadStatus();
     loadConfig();
     loadDocuments();
+    loadConnectors();
   </script>
 </body>
 </html>
