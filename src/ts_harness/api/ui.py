@@ -132,7 +132,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           <p>Draft-only by default, deny-by-default tool gateway, bounded FinOps</p>
         </div>
       </div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <a href="/manual" style="font-weight:600; color:var(--primary); text-decoration:none;">
+          User Manual
+        </a>
         <button id="theme-toggle" type="button" class="secondary" onclick="toggleTheme()">
           Dark Mode
         </button>

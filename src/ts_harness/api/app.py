@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 from ts_harness import __version__
+from ts_harness.api.manual import MANUAL_HTML
 from ts_harness.api.ui import DASHBOARD_HTML
 from ts_harness.approvals.queue import ApprovalQueue
 from ts_harness.audit.logger import AuditLogger
@@ -102,6 +103,10 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     def dashboard() -> str:
         return DASHBOARD_HTML
+
+    @app.get("/manual", response_class=HTMLResponse)
+    def manual() -> str:
+        return MANUAL_HTML
 
     @app.get("/assets/logo.jpg")
     def logo() -> FileResponse:

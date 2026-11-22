@@ -54,6 +54,7 @@ docker compose up -d --build
 
 Open the web configuration and control interface at:
 - **Web UI**: [http://localhost:8000](http://localhost:8000)
+- **User Manual**: [http://localhost:8000/manual](http://localhost:8000/manual)
 - **Healthcheck**: [http://localhost:8000/health](http://localhost:8000/health)
 
 Persistent database, `settings.yaml`, and the `0600`-protected `.secrets.json` vault are stored in the `ts_harness_data` Docker volume (`/data`).
