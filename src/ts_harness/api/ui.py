@@ -143,6 +143,23 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     .chat-msg { padding: 10px 12px; border-radius: 8px; max-width: 85%; white-space: pre-wrap; }
     .chat-user { align-self: flex-end; background: var(--primary); color: #fff; }
     .chat-bot { align-self: flex-start; border: 1px solid var(--border); background: var(--bg); }
+    textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: transparent;
+      color: inherit;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.84rem;
+    }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.84rem; }
+    th, td {
+      text-align: left;
+      padding: 7px 8px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
     .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
     .chip { font-size: 0.78rem; padding: 5px 10px; background: #475569; }
   </style>
@@ -177,6 +194,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       </button>
       <button id="tab-btn-config" type="button" class="tab-btn" onclick="switchTab('config')">
         Configuration &amp; Vault
+      </button>
+      <button id="tab-btn-gov" type="button" class="tab-btn" onclick="switchTab('gov')">
+        Policies, Audit &amp; Approvals
       </button>
     </div>
 
@@ -438,6 +458,83 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <div id="connectors-list" class="muted">Loading connector status...</div>
     </div>
     </div>
+
+    <div id="panel-gov" style="display:none;">
+      <div class="card">
+        <h2>Policy Engine (YAML &amp; Dry-Run Explain)</h2>
+        <p class="muted" id="policy-meta">Loading policy...</p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+          <button type="button" class="secondary" onclick="applyPolicyPreset('strict')">
+            Load Strict (Default)
+          </button>
+          <button type="button" class="secondary" onclick="applyPolicyPreset('relaxed')">
+            Load Relaxed
+          </button>
+          <button type="button" onclick="savePolicyYaml()">Save Policy YAML</button>
+        </div>
+        <textarea id="policy-yaml" rows="14" spellcheck="false"></textarea>
+
+        <h3>Dry-Run Explain Mode</h3>
+        <form onsubmit="explainPolicy(event)">
+          <div class="row">
+            <div class="field">
+              <label for="exp-tool">Tool Name</label>
+              <input id="exp-tool" type="text" value="send_email" required>
+            </div>
+            <div class="field">
+              <label for="exp-tier">Risk Tier</label>
+              <select id="exp-tier">
+                <option value="T0">T0 (Read-only)</option>
+                <option value="T1">T1 (Reversible write)</option>
+                <option value="T2" selected>T2 (Outward / approval)</option>
+                <option value="T3">T3 (Forbidden)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="exp-trust">Trust Level</label>
+              <select id="exp-trust">
+                <option value="user">user</option>
+                <option value="system">system</option>
+                <option value="trusted-tool">trusted-tool</option>
+                <option value="untrusted-external">untrusted-external</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit">Explain Decision</button>
+        </form>
+        <pre id="explain-result" class="muted" style="margin-top:10px; white-space:pre-wrap;"></pre>
+      </div>
+
+      <div class="card">
+        <h2>Approvals Inbox</h2>
+        <div id="approvals-box" class="muted">Loading pending approvals...</div>
+      </div>
+
+      <div class="card">
+        <h2>Hash-Chained Audit Log (SHA-256)</h2>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+          <div id="audit-chain-status" class="muted">Verifying chain...</div>
+          <button type="button" class="secondary" onclick="loadAudit()">
+            Refresh &amp; Verify
+          </button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Timestamp</th>
+                <th>Actor</th>
+                <th>Event</th>
+                <th>Task</th>
+                <th>Entry Hash</th>
+              </tr>
+            </thead>
+            <tbody id="audit-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -470,11 +567,17 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     initTheme();
 
     function switchTab(tab) {
-      const isChat = tab === "chat";
-      document.getElementById("panel-chat").style.display = isChat ? "block" : "none";
-      document.getElementById("panel-config").style.display = isChat ? "none" : "block";
-      document.getElementById("tab-btn-chat").classList.toggle("active", isChat);
-      document.getElementById("tab-btn-config").classList.toggle("active", !isChat);
+      document.getElementById("panel-chat").style.display = tab === "chat" ? "block" : "none";
+      document.getElementById("panel-config").style.display = tab === "config" ? "block" : "none";
+      document.getElementById("panel-gov").style.display = tab === "gov" ? "block" : "none";
+      document.getElementById("tab-btn-chat").classList.toggle("active", tab === "chat");
+      document.getElementById("tab-btn-config").classList.toggle("active", tab === "config");
+      document.getElementById("tab-btn-gov").classList.toggle("active", tab === "gov");
+      if (tab === "gov") {
+        loadPolicy();
+        loadApprovals();
+        loadAudit();
+      }
     }
 
     function usePrompt(text) {
@@ -744,6 +847,121 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             </span>
           </div>
         </div>
+      `).join("");
+    }
+
+    async function loadPolicy() {
+      const res = await fetch("/api/policy");
+      const data = await res.json();
+      document.getElementById("policy-meta").textContent =
+        `Active: ${data.name} (v${data.version}, ${data.rule_count} rules)`;
+      document.getElementById("policy-yaml").value = data.yaml_text;
+    }
+
+    async function applyPolicyPreset(preset) {
+      const res = await fetch("/api/policy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preset }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        showToast("Policy update failed: " + (err.detail || res.statusText), true);
+        return;
+      }
+      showToast(`Loaded '${preset}' policy preset.`);
+      await Promise.all([loadPolicy(), loadAudit()]);
+    }
+
+    async function savePolicyYaml() {
+      const yaml_text = document.getElementById("policy-yaml").value;
+      const res = await fetch("/api/policy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ yaml_text }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        showToast("Invalid policy YAML: " + (err.detail || res.statusText), true);
+        return;
+      }
+      showToast("Custom policy YAML validated and saved.");
+      await Promise.all([loadPolicy(), loadAudit()]);
+    }
+
+    async function explainPolicy(event) {
+      event.preventDefault();
+      const res = await fetch("/api/policy/explain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tool_name: document.getElementById("exp-tool").value,
+          risk_tier: document.getElementById("exp-tier").value,
+          trust_level: document.getElementById("exp-trust").value,
+        }),
+      });
+      const data = await res.json();
+      document.getElementById("explain-result").textContent =
+        `${data.decision.allowed ? "ALLOWED" : "BLOCKED"} (${data.decision.rule_id}): ` +
+        `${data.summary}`;
+    }
+
+    async function loadApprovals() {
+      const res = await fetch("/api/approvals");
+      const items = await res.json();
+      const box = document.getElementById("approvals-box");
+      if (items.length === 0) {
+        box.textContent = "No pending approvals.";
+        return;
+      }
+      box.innerHTML = items.map(a => `
+        <div class="secret-row">
+          <div>
+            <strong>${a.tool_name}</strong>: ${a.summary}
+            <div class="muted">${a.reason}</div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button type="button" onclick="decideApproval('${a.id}', true)">Approve</button>
+            <button type="button" class="danger" onclick="decideApproval('${a.id}', false)">
+              Reject
+            </button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    async function decideApproval(id, approve) {
+      const endpoint = approve
+        ? `/api/approvals/${encodeURIComponent(id)}/approve`
+        : `/api/approvals/${encodeURIComponent(id)}/reject`;
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: approve ? "Approved in UI" : "Rejected in UI" }),
+      });
+      if (res.ok) {
+        showToast(approve ? "Approval granted." : "Approval rejected.");
+        await Promise.all([loadApprovals(), loadAudit()]);
+      }
+    }
+
+    async function loadAudit() {
+      const res = await fetch("/api/audit?limit=25");
+      const data = await res.json();
+      const v = data.verification;
+      document.getElementById("audit-chain-status").innerHTML =
+        `<span class="badge ${v.valid ? "ok" : "danger"}">` +
+        `${v.valid ? "VALID" : "BROKEN"} (${v.checked_count} entries)</span>`;
+      const tbody = document.getElementById("audit-tbody");
+      tbody.innerHTML = data.events.map(e => `
+        <tr>
+          <td>${e.id}</td>
+          <td>${e.timestamp}</td>
+          <td>${e.actor}</td>
+          <td><code>${e.event_type}</code></td>
+          <td>${e.task_id ? e.task_id.slice(0, 8) : "-"}</td>
+          <td><code>${e.entry_hash.slice(0, 12)}...</code></td>
+        </tr>
       `).join("");
     }
 

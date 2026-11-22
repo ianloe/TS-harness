@@ -113,3 +113,27 @@ def test_api_health_dashboard_config_secrets_and_killswitch(tmp_path: Path) -> N
     client.post("/api/killswitch/pause-all", json={"reason": "halt"})
     chat_ks = client.post("/api/chat", json={"message": "Hello", "suite": "mock"})
     assert chat_ks.status_code == 503
+
+    # Policy config, explain mode, and audit chain API
+    pol_get = client.get("/api/policy")
+    assert pol_get.status_code == 200
+    assert "rules:" in pol_get.json()["yaml_text"]
+
+    pol_bad = client.post("/api/policy", json={"yaml_text": "not: [valid"})
+    assert pol_bad.status_code == 400
+
+    pol_save = client.post("/api/policy", json={"preset": "relaxed"})
+    assert pol_save.status_code == 200
+    assert pol_save.json()["name"] == "relaxed-personal"
+
+    pol_exp = client.post(
+        "/api/policy/explain",
+        json={"tool_name": "wire_transfer", "risk_tier": "T3", "trust_level": "user"},
+    )
+    assert pol_exp.status_code == 200
+    assert pol_exp.json()["decision"]["allowed"] is False
+
+    audit_res = client.get("/api/audit?limit=10")
+    assert audit_res.status_code == 200
+    assert audit_res.json()["verification"]["valid"] is True
+    assert len(audit_res.json()["events"]) >= 1

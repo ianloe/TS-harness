@@ -6,9 +6,10 @@ import secrets
 from pathlib import Path
 from typing import Any
 
+import yaml
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from ts_harness import __version__
 from ts_harness.agents.models import ModelProviderError, VaultModelClient
@@ -41,7 +42,7 @@ from ts_harness.core.store import StateStore
 from ts_harness.db.base import create_db_engine, create_session_factory, init_db
 from ts_harness.finops.budget import BudgetManager
 from ts_harness.finops.reports import build_cost_attribution_report
-from ts_harness.gateway.gateway import ToolGateway
+from ts_harness.gateway.gateway import ExecutionContext, ToolGateway
 from ts_harness.graph.engine import GraphRunner
 from ts_harness.guardrails.filters import redact_pii_and_secrets
 from ts_harness.killswitch.manager import KillSwitchManager
@@ -87,6 +88,22 @@ class ChatRequest(BaseModel):
 
     message: str = Field(min_length=1, max_length=4000)
     suite: str = Field(default="mock")
+
+
+class PolicyUpdateRequest(BaseModel):
+    """Update active policy from a preset or custom YAML."""
+
+    preset: str | None = None
+    yaml_text: str | None = None
+
+
+class PolicyExplainRequest(BaseModel):
+    """Dry-run policy explain request."""
+
+    tool_name: str = Field(min_length=1)
+    risk_tier: RiskTier = RiskTier.T0
+    trust_level: str = "user"
+    args: dict[str, Any] = Field(default_factory=dict)
 
 
 def _format_workflow_reply(wf_name: str, state: dict[str, Any]) -> str:
@@ -155,8 +172,31 @@ def create_app(
     )
     vault = SecretsVault(Path(settings.data_dir) / ".secrets.json")
     doc_store = DocumentStore(Path(settings.data_dir) / "documents")
+    active_policy_path = Path(settings.data_dir) / "policy.yaml"
     resolved_logo = logo_path or _default_logo_path()
     oauth_states: set[str] = set()
+
+    def _load_active_policy() -> tuple[PolicyEngine, str]:
+        if active_policy_path.exists():
+            raw_text = active_policy_path.read_text(encoding="utf-8")
+            return PolicyEngine(PolicySet(**(yaml.safe_load(raw_text) or {}))), raw_text
+        strict_path = _resolve_repo_path("policies/strict.yaml")
+        if strict_path.exists():
+            raw_text = strict_path.read_text(encoding="utf-8")
+            return PolicyEngine(PolicySet(**(yaml.safe_load(raw_text) or {}))), raw_text
+        fallback = PolicySet(
+            version="1.0",
+            name="default-strict",
+            rules=[
+                PolicyRule(
+                    id="allow-t0-t1",
+                    effect=RuleEffect.ALLOW,
+                    match=RuleMatch(action_tiers=[RiskTier.T0, RiskTier.T1]),
+                )
+            ],
+        )
+        dumped = yaml.safe_dump(fallback.model_dump(mode="json"), sort_keys=False)
+        return PolicyEngine(fallback), dumped
 
     app = FastAPI(title="TS-Harness API", version=__version__)
 
@@ -301,6 +341,66 @@ def create_app(
     @app.get("/api/traces/{task_id}")
     def get_trace(task_id: str) -> dict[str, Any]:
         return build_run_trace(task_id, audit_logger).model_dump(mode="json")
+
+    @app.get("/api/audit")
+    def get_audit(limit: int = 30) -> dict[str, Any]:
+        verification = audit_logger.verify_chain()
+        events = audit_logger.list_events(limit=min(max(limit, 1), 200))
+        return {
+            "verification": verification.model_dump(mode="json"),
+            "events": [e.model_dump(mode="json") for e in events],
+        }
+
+    @app.get("/api/policy")
+    def get_policy() -> dict[str, Any]:
+        engine, raw_text = _load_active_policy()
+        return {
+            "name": engine.policy_set.name,
+            "version": engine.policy_set.version,
+            "rule_count": len(engine.policy_set.rules),
+            "yaml_text": raw_text,
+        }
+
+    @app.post("/api/policy")
+    def update_policy(payload: PolicyUpdateRequest) -> dict[str, Any]:
+        raw_text = payload.yaml_text
+        if payload.preset in {"strict", "relaxed"}:
+            preset_path = _resolve_repo_path(f"policies/{payload.preset}.yaml")
+            if not preset_path.exists():
+                raise HTTPException(status_code=404, detail=f"Preset '{payload.preset}' not found.")
+            raw_text = preset_path.read_text(encoding="utf-8")
+        if not raw_text:
+            raise HTTPException(status_code=400, detail="Provide either 'preset' or 'yaml_text'.")
+        try:
+            parsed = yaml.safe_load(raw_text) or {}
+            policy_set = PolicySet(**parsed)
+        except (yaml.YAMLError, ValidationError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid policy YAML: {exc}") from exc
+
+        active_policy_path.parent.mkdir(parents=True, exist_ok=True)
+        active_policy_path.write_text(raw_text, encoding="utf-8")
+        audit_logger.append(
+            event_type="policy.updated",
+            actor="web_ui",
+            payload={"name": policy_set.name, "version": policy_set.version},
+        )
+        return {
+            "status": "saved",
+            "name": policy_set.name,
+            "version": policy_set.version,
+            "rule_count": len(policy_set.rules),
+        }
+
+    @app.post("/api/policy/explain")
+    def explain_policy(payload: PolicyExplainRequest) -> dict[str, Any]:
+        engine, _ = _load_active_policy()
+        exp = engine.explain(
+            payload.tool_name,
+            payload.risk_tier,
+            payload.args,
+            ExecutionContext(trust_level=payload.trust_level),
+        )
+        return exp.model_dump(mode="json")
 
     @app.get("/api/approvals")
     def list_approvals() -> list[dict[str, Any]]:
@@ -492,23 +592,7 @@ def create_app(
             )
         )
 
-        policy_path = _resolve_repo_path("policies/strict.yaml")
-        if policy_path.exists():
-            policy_engine = PolicyEngine.from_yaml(policy_path)
-        else:
-            policy_engine = PolicyEngine(
-                PolicySet(
-                    version="1.0",
-                    name="chat-default",
-                    rules=[
-                        PolicyRule(
-                            id="allow-t0-t1",
-                            effect=RuleEffect.ALLOW,
-                            match=RuleMatch(action_tiers=[RiskTier.T0, RiskTier.T1]),
-                        )
-                    ],
-                )
-            )
+        policy_engine, _ = _load_active_policy()
 
         gateway = ToolGateway(
             audit_logger=audit_logger,

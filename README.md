@@ -97,8 +97,9 @@ uv run ts-harness killswitch resume-all
 
 ## Web Configuration Interface
 
-The built-in web interface at `/` provides two tabs (**Interactive Chat** and **Configuration & Vault**) allowing you to:
+The built-in web interface at `/` provides three tabs (**Interactive Chat**, **Configuration & Vault**, and **Policies, Audit & Approvals**) allowing you to:
 - **Interactive Chat**: Chat directly with TS-Harness (`POST /api/chat`) using mock or read-only workspace connectors; every message is PII/secret-redacted, classified by risk tier (`T0`–`T3`), routed through `ToolGateway` and `GraphRunner`, and verified before output.
+- **Policies, Audit & Approvals**: Switch between `strict` and `relaxed` presets or edit policy YAML (`POST /api/policy`), test rules with dry-run **Explain Mode** (`POST /api/policy/explain`), approve/reject pending `T2` actions, and inspect/verify the SHA-256 hash-chained audit log (`GET /api/audit`).
 - **Role-based model routing**: Configure provider (`anthropic`, `openai`, `gemini`, `openrouter`, `agnes-ai`, `deepseek`, `ollama`) and model name independently for `planner`, `executor`, and `verifier` roles.
 - **Secrets Vault**: Store or remove `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `AGNES_AI_API_KEY`, `DEEPSEEK_API_KEY`, `GOOGLE_WORKSPACE_TOKEN`, `MICROSOFT_365_TOKEN`, `LARK_APP_ID`, `LARK_APP_SECRET`, `LARK_TENANT_ACCESS_TOKEN`, `AEGIS_API_TOKEN`, and `NTFY_TOKEN`. Secrets are written to a `0600`-protected vault outside the repository, are never returned in plain text, and are automatically redacted from logs and audit records.
 - **Workspace Connectors**: One-step read-only connector bundles (`build_suite_bundle`), one-click **Google Workspace OAuth** (`/api/connectors/google/start` requesting `gmail.readonly`, `calendar.readonly`, `drive.readonly` with automatic token refresh), and live readiness status (`/api/connectors/status`) for **Google Workspace**, **Microsoft 365** (Microsoft Graph), and **Lark Suite** (Lark Open Platform).
