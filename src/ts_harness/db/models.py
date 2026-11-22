@@ -127,3 +127,28 @@ class KillSwitchRecord(Base):
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ApprovalRecord(Base):
+    """Human-in-the-loop approval queue item for T2 or high-cost actions."""
+
+    __tablename__ = "approvals"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    task_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    tool_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
+    summary: Mapped[str] = mapped_column(String(512), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    estimated_cost: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    cost_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="SGD")
+    reversibility: Mapped[str] = mapped_column(String(64), nullable=False, default="irreversible")
+    preview_diff: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    decided_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

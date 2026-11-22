@@ -1,0 +1,25 @@
+version: "1.0.0"
+name: relaxed-personal
+default_effect: deny
+rules:
+  - id: allow-all-t0-readonly
+    description: Allow T0 read-only tools across all trust levels.
+    effect: allow
+    match:
+      tools: ["*"]
+      action_tiers: ["T0"]
+
+  - id: allow-t1-reversible-writes
+    description: Allow T1 reversible writes when not solely from untrusted-external.
+    effect: allow
+    match:
+      tools: ["*"]
+      action_tiers: ["T1"]
+      trust_levels: ["user", "system", "trusted-tool"]
+
+  - id: require-approval-t2
+    description: Require human approval for T2 outward-facing or destructive actions.
+    effect: require_approval
+    match:
+      tools: ["*"]
+      action_tiers: ["T2"]

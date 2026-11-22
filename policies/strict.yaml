@@ -1,0 +1,26 @@
+version: "1.0.0"
+name: strict-default
+default_effect: deny
+rules:
+  - id: allow-readonly-trusted
+    description: Allow T0 read-only tools for user, system, or trusted-tool contexts.
+    effect: allow
+    match:
+      tools: ["*"]
+      action_tiers: ["T0"]
+      trust_levels: ["user", "system", "trusted-tool"]
+
+  - id: allow-t1-drafts-user-initiated
+    description: Allow T1 reversible drafts and notes when initiated by user or system.
+    effect: allow
+    match:
+      tools: ["draft_*", "note_*", "calendar_hold_*", "label_propose_*"]
+      action_tiers: ["T1"]
+      trust_levels: ["user", "system", "trusted-tool"]
+
+  - id: require-approval-t2-outward
+    description: Hold all T2 outward-facing actions for explicit human approval.
+    effect: require_approval
+    match:
+      tools: ["*"]
+      action_tiers: ["T2"]
