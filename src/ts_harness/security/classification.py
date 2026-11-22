@@ -15,8 +15,24 @@ class DataClassificationPolicy(BaseModel):
 
     allowed_providers: dict[DataClass, list[str]] = Field(
         default_factory=lambda: {
-            DataClass.PUBLIC: ["anthropic", "openai", "gemini", "ollama"],
-            DataClass.INTERNAL: ["anthropic", "openai", "gemini", "ollama"],
+            DataClass.PUBLIC: [
+                "anthropic",
+                "openai",
+                "gemini",
+                "openrouter",
+                "agnes-ai",
+                "deepseek",
+                "ollama",
+            ],
+            DataClass.INTERNAL: [
+                "anthropic",
+                "openai",
+                "gemini",
+                "openrouter",
+                "agnes-ai",
+                "deepseek",
+                "ollama",
+            ],
             DataClass.CONFIDENTIAL: ["anthropic", "ollama"],
             DataClass.PERSONAL: ["anthropic", "ollama"],
         }

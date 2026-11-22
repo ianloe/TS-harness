@@ -528,12 +528,12 @@ def create_app(
         client = VaultModelClient(vault=vault, currency=cfg.budget.currency)
         planner = PlannerAgent(
             model_client=client,
-            role_config=classification.models.planner,
+            role_config=cfg.models.planner,
             budget_manager=budget_mgr,
         )
         verifier = VerifierAgent(
             model_client=client,
-            role_config=classification.models.verifier,
+            role_config=cfg.models.verifier,
             budget_manager=budget_mgr,
         )
 
