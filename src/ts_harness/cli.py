@@ -287,3 +287,14 @@ def serve_cmd(
 
     fastapi_app = create_app(config_path=_get_config_path(ctx))
     uvicorn.run(fastapi_app, host=host, port=port)
+
+
+@app.command("eval")
+def eval_cmd() -> None:
+    """Run the regression evaluation suite."""
+    from ts_harness.evals.runner import run_eval_suite
+
+    summary = run_eval_suite()
+    console.print_json(summary.model_dump_json())
+    if summary.passed_cases != summary.total_cases or summary.escape_rate > 0.0:
+        raise typer.Exit(code=1)

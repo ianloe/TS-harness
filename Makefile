@@ -14,7 +14,7 @@ run:
 	uv run ts-harness status
 
 eval:
-	@echo "Evaluation harness will be enabled in Phase 5."
+	uv run ts-harness eval
 
 attest:
 	@echo "Attestation report generator will be enabled in Phase 6."

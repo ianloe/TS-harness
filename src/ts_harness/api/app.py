@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from ts_harness import __version__
 from ts_harness.api.ui import DASHBOARD_HTML
+from ts_harness.approvals.queue import ApprovalQueue
 from ts_harness.audit.logger import AuditLogger
 from ts_harness.config import (
     BudgetConfig,
@@ -24,7 +25,9 @@ from ts_harness.config import (
 )
 from ts_harness.db.base import create_db_engine, create_session_factory, init_db
 from ts_harness.finops.budget import BudgetManager
+from ts_harness.finops.reports import build_cost_attribution_report
 from ts_harness.killswitch.manager import KillSwitchManager
+from ts_harness.observability.tracing import build_run_trace, collect_dashboard_metrics
 from ts_harness.security.vault import SecretStatus, SecretsVault
 
 
@@ -69,6 +72,7 @@ def create_app(
     session_factory = create_session_factory(engine)
     audit_logger = AuditLogger(session_factory)
     kill_switch = KillSwitchManager(session_factory, audit_logger)
+    approval_queue = ApprovalQueue(session_factory, audit_logger)
 
     target_config_path = (
         resolved_config_path
@@ -201,5 +205,41 @@ def create_app(
     def resume_all() -> dict[str, Any]:
         state = kill_switch.resume_all(actor="web_ui")
         return {"resumed": state is not None}
+
+    @app.get("/api/metrics")
+    def get_metrics() -> dict[str, Any]:
+        cfg = _current_settings()
+        return collect_dashboard_metrics(session_factory, cfg.budget).model_dump(mode="json")
+
+    @app.get("/api/finops/report")
+    def get_finops_report() -> dict[str, Any]:
+        cfg = _current_settings()
+        return build_cost_attribution_report(
+            session_factory, cfg.budget.currency
+        ).model_dump(mode="json")
+
+    @app.get("/api/traces/{task_id}")
+    def get_trace(task_id: str) -> dict[str, Any]:
+        return build_run_trace(task_id, audit_logger).model_dump(mode="json")
+
+    @app.get("/api/approvals")
+    def list_approvals() -> list[dict[str, Any]]:
+        return [a.model_dump(mode="json") for a in approval_queue.list_pending()]
+
+    @app.post("/api/approvals/{approval_id}/approve")
+    def approve_item(approval_id: str) -> dict[str, Any]:
+        try:
+            req = approval_queue.approve(approval_id, actor="web_ui")
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return req.model_dump(mode="json")
+
+    @app.post("/api/approvals/{approval_id}/reject")
+    def reject_item(approval_id: str, payload: KillSwitchActionRequest) -> dict[str, Any]:
+        try:
+            req = approval_queue.reject(approval_id, reason=payload.reason, actor="web_ui")
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return req.model_dump(mode="json")
 
     return app
