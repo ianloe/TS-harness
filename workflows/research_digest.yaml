@@ -1,0 +1,37 @@
+name: research_digest
+version: "1.0.0"
+draft_only: true
+risk_tier: T0
+data_class: public
+budget_limit: 2.0
+scope_contract: {}
+graph:
+  name: research_digest
+  version: "1.0.0"
+  entry_node: plan
+  draft_only: true
+  nodes:
+    plan:
+      id: plan
+      node_type: plan
+    research_loop:
+      id: research_loop
+      node_type: loop
+      loop_policy:
+        max_iterations: 3
+        timeout_seconds: 60.0
+        max_cost: 1.0
+        no_progress_threshold: 3
+    verify:
+      id: verify
+      node_type: verify
+    end:
+      id: end
+      node_type: end
+  edges:
+    - source: plan
+      target: research_loop
+    - source: research_loop
+      target: verify
+    - source: verify
+      target: end

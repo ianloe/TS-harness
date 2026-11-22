@@ -1,0 +1,33 @@
+name: meeting_prep
+version: "1.0.0"
+draft_only: true
+risk_tier: T0
+data_class: internal
+budget_limit: 1.5
+scope_contract:
+  allowed_projects: ["ts-harness"]
+graph:
+  name: meeting_prep
+  version: "1.0.0"
+  entry_node: plan
+  draft_only: true
+  nodes:
+    plan:
+      id: plan
+      node_type: plan
+    act:
+      id: act
+      node_type: act
+    verify:
+      id: verify
+      node_type: verify
+    end:
+      id: end
+      node_type: end
+  edges:
+    - source: plan
+      target: act
+    - source: act
+      target: verify
+    - source: verify
+      target: end
