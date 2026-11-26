@@ -95,6 +95,15 @@ class TelemetryConfig(BaseModel):
     service_name: str = Field(default="ts-harness")
     aegis_export_url: str | None = Field(default=None)
 
+    @field_validator("aegis_export_url")
+    @classmethod
+    def validate_export_url(cls, value: str | None) -> str | None:
+        if value is not None and not (
+            value.startswith("https://") or value.startswith("http://")
+        ):
+            raise ValueError("aegis_export_url must start with http:// or https://")
+        return value
+
 
 class LoggingConfig(BaseModel):
     """Structured logging configuration."""

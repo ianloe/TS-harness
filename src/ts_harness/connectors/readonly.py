@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
@@ -69,8 +70,9 @@ class ReadOnlyGmailConnector:
             msg_id = str(item.get("id", ""))
             if not msg_id:
                 continue
+            safe_id = urllib.parse.quote(msg_id, safe="")
             detail = _fetch_json(
-                f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}"
+                f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{safe_id}"
                 "?format=metadata&metadataHeaders=Subject&metadataHeaders=From",
                 token,
             )
@@ -168,6 +170,8 @@ class ReadOnlyGitHubConnector:
         self._token_key = token_key
 
     def list_recent_activity(self, repo: str, *, limit: int = 10) -> list[GitHubActivity]:
+        if not re.match(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", repo):
+            raise ReadOnlyConnectorError(f"Invalid GitHub repository format: '{repo}'.")
         token = self._vault.get_secret(self._token_key)
         if not token:
             raise ReadOnlyConnectorError(f"Missing secret '{self._token_key}'.")

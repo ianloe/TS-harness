@@ -631,6 +631,15 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       await loadStatus();
     }
 
+    function escapeHtml(val) {
+      return String(val ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
     function showToast(msg, isError = false) {
       const el = document.getElementById("toast");
       el.style.display = "block";
@@ -649,13 +658,15 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         ? `<span class="badge ok">None active</span>`
         : `<span class="badge danger">${data.active_kill_switches.length} active</span>`;
       box.innerHTML = `
-        <p><strong>Environment:</strong> ${data.environment}</p>
+        <p><strong>Environment:</strong> ${escapeHtml(data.environment)}</p>
         <p><strong>Audit Chain:</strong> ${chainBadge}</p>
         <p><strong>Kill Switches:</strong> ${ksBadge}</p>
         <p><strong>Daily Spend:</strong>
-          ${data.daily_spend.toFixed(4)} / ${data.daily_limit.toFixed(2)} ${data.currency}</p>
+          ${data.daily_spend.toFixed(4)} / ${data.daily_limit.toFixed(2)}
+          ${escapeHtml(data.currency)}</p>
         <p><strong>Monthly Spend:</strong>
-          ${data.monthly_spend.toFixed(4)} / ${data.monthly_limit.toFixed(2)} ${data.currency}</p>
+          ${data.monthly_spend.toFixed(4)} / ${data.monthly_limit.toFixed(2)}
+          ${escapeHtml(data.currency)}</p>
       `;
     }
 
@@ -687,16 +698,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       list.innerHTML = data.secrets.map(s => `
         <div class="secret-row">
           <div>
-            <strong>${s.key}</strong>
-            <span class="muted">(${s.source})</span>
+            <strong>${escapeHtml(s.key)}</strong>
+            <span class="muted">(${escapeHtml(s.source)})</span>
           </div>
           <div style="display:flex; align-items:center; gap:8px;">
             <span class="badge ${s.configured ? "ok" : "warn"}">
-              ${s.configured ? s.masked_preview : "Not configured"}
+              ${s.configured ? escapeHtml(s.masked_preview) : "Not configured"}
             </span>
             ${s.source === "vault"
               ? `<button type="button" class="secondary"
-                  onclick="deleteSecret('${s.key}')">Remove</button>`
+                  onclick="deleteSecret('${escapeHtml(s.key)}')">Remove</button>`
               : ""}
           </div>
         </div>
@@ -803,7 +814,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       }
       box.innerHTML = docs.map(d => `
         <div class="secret-row">
-          <div><strong>${d.name}</strong> <span class="muted">(${d.size_bytes} bytes)</span></div>
+          <div>
+            <strong>${escapeHtml(d.name)}</strong>
+            <span class="muted">(${Number(d.size_bytes)} bytes)</span>
+          </div>
           <div>
             <a href="/api/documents/${encodeURIComponent(d.name)}/download">Download</a>
           </div>
@@ -840,10 +854,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       const box = document.getElementById("connectors-list");
       box.innerHTML = suites.map(s => `
         <div class="secret-row">
-          <div><strong>${s.label}</strong> <span class="muted">(${s.mode})</span></div>
+          <div>
+            <strong>${escapeHtml(s.label)}</strong>
+            <span class="muted">(${escapeHtml(s.mode)})</span>
+          </div>
           <div>
             <span class="badge ${s.configured ? "ok" : "warn"}">
-              ${s.configured ? "Ready" : "Needs " + s.missing_keys.join(", ")}
+              ${s.configured ? "Ready" : "Needs " + escapeHtml(s.missing_keys.join(", "))}
             </span>
           </div>
         </div>
@@ -917,12 +934,18 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       box.innerHTML = items.map(a => `
         <div class="secret-row">
           <div>
-            <strong>${a.tool_name}</strong>: ${a.summary}
-            <div class="muted">${a.reason}</div>
+            <strong>${escapeHtml(a.tool_name)}</strong>: ${escapeHtml(a.summary)}
+            <div class="muted">${escapeHtml(a.reason)}</div>
           </div>
           <div style="display:flex; gap:6px;">
-            <button type="button" onclick="decideApproval('${a.id}', true)">Approve</button>
-            <button type="button" class="danger" onclick="decideApproval('${a.id}', false)">
+            <button type="button" onclick="decideApproval('${escapeHtml(a.id)}', true)">
+              Approve
+            </button>
+            <button
+              type="button"
+              class="danger"
+              onclick="decideApproval('${escapeHtml(a.id)}', false)"
+            >
               Reject
             </button>
           </div>
@@ -955,12 +978,12 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       const tbody = document.getElementById("audit-tbody");
       tbody.innerHTML = data.events.map(e => `
         <tr>
-          <td>${e.id}</td>
-          <td>${e.timestamp}</td>
-          <td>${e.actor}</td>
-          <td><code>${e.event_type}</code></td>
-          <td>${e.task_id ? e.task_id.slice(0, 8) : "-"}</td>
-          <td><code>${e.entry_hash.slice(0, 12)}...</code></td>
+          <td>${Number(e.id)}</td>
+          <td>${escapeHtml(e.timestamp)}</td>
+          <td>${escapeHtml(e.actor)}</td>
+          <td><code>${escapeHtml(e.event_type)}</code></td>
+          <td>${e.task_id ? escapeHtml(e.task_id.slice(0, 8)) : "-"}</td>
+          <td><code>${escapeHtml(e.entry_hash.slice(0, 12))}...</code></td>
         </tr>
       `).join("");
     }

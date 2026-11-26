@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import secrets
+import time
 from pathlib import Path
 from typing import Any
 
@@ -174,7 +175,7 @@ def create_app(
     doc_store = DocumentStore(Path(settings.data_dir) / "documents")
     active_policy_path = Path(settings.data_dir) / "policy.yaml"
     resolved_logo = logo_path or _default_logo_path()
-    oauth_states: set[str] = set()
+    oauth_states: dict[str, float] = {}
 
     def _load_active_policy() -> tuple[PolicyEngine, str]:
         if active_policy_path.exists():
@@ -199,6 +200,15 @@ def create_app(
         return PolicyEngine(fallback), dumped
 
     app = FastAPI(title="TS-Harness API", version=__version__)
+
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next: Any) -> Any:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        return response
 
     def _current_settings() -> Settings:
         if target_config_path.exists():
@@ -437,8 +447,15 @@ def create_app(
                     "Save GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the Secrets Vault first."
                 ),
             )
+        now = time.monotonic()
+        expired = [k for k, exp in oauth_states.items() if exp <= now]
+        for k in expired:
+            del oauth_states[k]
+        if len(oauth_states) >= 100:
+            oldest = min(oauth_states, key=oauth_states.get)  # type: ignore[arg-type]
+            del oauth_states[oldest]
         state = secrets.token_urlsafe(24)
-        oauth_states.add(state)
+        oauth_states[state] = now + 600.0
         redirect_uri = str(request.url_for("google_oauth_callback"))
         url = build_google_auth_url(client_id=client_id, redirect_uri=redirect_uri, state=state)
         return RedirectResponse(url=url, status_code=302)
@@ -452,9 +469,10 @@ def create_app(
     ) -> RedirectResponse:
         if error:
             raise HTTPException(status_code=400, detail=f"Google OAuth error: {error}")
-        if not state or state not in oauth_states:
+        now = time.monotonic()
+        exp = oauth_states.pop(state, None) if state else None
+        if exp is None or exp <= now:
             raise HTTPException(status_code=400, detail="Invalid or expired OAuth state.")
-        oauth_states.discard(state)
         if not code:
             raise HTTPException(status_code=400, detail="Missing authorization code.")
 

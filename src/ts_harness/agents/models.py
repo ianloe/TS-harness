@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from typing import Any, Protocol
@@ -239,14 +241,17 @@ class VaultModelClient:
         prompt = "\n".join(m.content for m in messages)
         if system_prompt:
             prompt = f"{system_prompt}\n\n{prompt}"
+        safe_model = urllib.parse.quote(role_config.model_name, safe=".-_:")
+        if not re.match(r"^[A-Za-z0-9._:/-]+$", role_config.model_name):
+            raise ModelProviderError("Invalid model_name format.")
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{role_config.model_name}:generateContent?key={api_key}"
+            f"{safe_model}:generateContent"
         )
         data = self._post_json(
             url,
             {"contents": [{"parts": [{"text": prompt}]}]},
-            {},
+            {"x-goog-api-key": api_key},
         )
         candidates = data.get("candidates", [])
         text = (
@@ -279,3 +284,5 @@ class VaultModelClient:
             raise ModelProviderError(
                 f"Provider returned HTTP {exc.code}: {err_body[:300]}"
             ) from exc
+        except urllib.error.URLError as exc:
+            raise ModelProviderError(f"Provider connection failed: {exc.reason}") from exc
